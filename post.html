@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post</title>
+<meta property="og:type" content="article">
+<meta property="og:image" content="images/og-default.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;450;500;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="masthead" id="masthead"></header>
+
+<main class="wrap wrap--prose">
+  <article class="article" id="article"></article>
+</main>
+
+<footer id="foot"></footer>
+
+<script src="content.js"></script>
+<script src="app.js"></script>
+<script>
+  mountChrome("writing");
+
+  const id = new URLSearchParams(location.search).get("id");
+  const post = POSTS.find(p => p.id === id);
+  const root = document.getElementById("article");
+
+  if (!post) {
+    root.innerHTML = `
+      <div class="empty">
+        <p>That post doesn't exist.</p>
+        <p class="hint"><a href="index.html">Back to writing</a></p>
+      </div>`;
+  } else {
+    document.title = post.title + " — " + SITE.name;
+    const meta = document.querySelector('meta[property="og:title"]');
+    if (meta) meta.setAttribute("content", post.title);
+
+    const html = markdown(post.body);
+
+    // build table of contents from h2s
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    const h2s = [...tmp.querySelectorAll("h2")];
+    const toc = h2s.length >= 3
+      ? `<nav class="toc">
+           <h2>Contents</h2>
+           <ol>${h2s.map(h => `<li><a href="#${h.id}">${h.textContent}</a></li>`).join("")}</ol>
+         </nav>`
+      : "";
+
+    const verify = (post.verified || post.deps)
+      ? `<div class="verify">
+           ${post.verified ? `<b>Verified ${esc(post.verified)}</b>${post.deps ? " — " : ""}` : ""}
+           ${esc(post.deps || "")}
+         </div>`
+      : "";
+
+    root.innerHTML = `
+      <header class="article__head">
+        <p class="eyebrow">${esc((post.tags || []).join(" / ") || "Writing")}</p>
+        <h1>${esc(post.title)}</h1>
+        ${post.dek ? `<p class="article__dek">${esc(post.dek)}</p>` : ""}
+        <div class="byline">${esc(fmtDate(post.date))} · ${esc(readingTime(post.body))}</div>
+        ${verify}
+      </header>
+      ${toc}
+      <div class="prose">${html}</div>
+      <div class="actions" style="margin-top:56px;padding-top:26px;border-top:1px solid var(--rule)">
+        <a class="btn" href="index.html">← All writing</a>
+        <button class="btn" id="share">Copy link</button>
+      </div>`;
+
+    document.getElementById("share").addEventListener("click", () => {
+      navigator.clipboard.writeText(location.href)
+        .then(() => toast("Link copied"))
+        .catch(() => toast("Couldn't copy — select the address bar instead"));
+    });
+  }
+</script>
+</body>
+</html>

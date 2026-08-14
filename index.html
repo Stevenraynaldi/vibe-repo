@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing</title>
+<meta name="description" content="Notes on building with agents, MCP servers, and developer tools.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Writing">
+<meta property="og:description" content="Notes on building with agents, MCP servers, and developer tools.">
+<meta property="og:image" content="images/og-default.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;450;500;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="masthead" id="masthead"></header>
+
+<main>
+  <section class="intro">
+    <div class="wrap wrap--prose">
+      <p class="eyebrow">Writing</p>
+      <h1 id="introTitle"></h1>
+      <p id="introText"></p>
+    </div>
+  </section>
+
+  <div class="wrap wrap--prose">
+    <div class="entries" id="entries"></div>
+  </div>
+</main>
+
+<footer id="foot"></footer>
+
+<script src="content.js"></script>
+<script src="app.js"></script>
+<script>
+  mountChrome("writing");
+
+  document.title = SITE.name + " — Writing";
+  document.getElementById("introTitle").textContent = SITE.role;
+  document.getElementById("introText").textContent = SITE.writingIntro;
+
+  const list = document.getElementById("entries");
+  const posts = [...POSTS].sort(byNewest);
+
+  if (!posts.length) {
+    list.innerHTML = `
+      <div class="empty" style="margin-top:36px">
+        <p>No posts yet.</p>
+        <p class="hint">Open the Editor to write your first one.</p>
+      </div>`;
+  } else {
+    list.innerHTML = posts.map(p => `
+      <article class="entry">
+        <div class="entry__meta">
+          ${esc(fmtDate(p.date))}<br>${esc(readingTime(p.body))}
+        </div>
+        <div>
+          <h2 class="entry__title">
+            <a href="post.html?id=${encodeURIComponent(p.id)}">${esc(p.title)}</a>
+          </h2>
+          ${p.dek ? `<p class="entry__dek">${esc(p.dek)}</p>` : ""}
+          ${(p.tags || []).length
+            ? `<div class="tags">${p.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>`
+            : ""}
+        </div>
+      </article>`).join("");
+  }
+</script>
+</body>
+</html>

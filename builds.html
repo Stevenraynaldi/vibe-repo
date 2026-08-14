@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Builds</title>
+<meta name="description" content="Prototypes, tools, and MCP servers.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Builds">
+<meta property="og:description" content="Prototypes, tools, and MCP servers.">
+<meta property="og:image" content="images/og-default.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;450;500;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="masthead" id="masthead"></header>
+
+<main>
+  <section class="intro">
+    <div class="wrap">
+      <p class="eyebrow">Builds</p>
+      <h1>Things I've made</h1>
+      <p id="introText"></p>
+    </div>
+  </section>
+
+  <section class="builds-sheet">
+    <div class="wrap">
+      <div class="grid" id="grid"></div>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="overlay" data-open="false" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet" id="sheet">
+    <div class="sheet__bar">
+      <span id="sheetIdx"></span>
+      <button class="x" id="close" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet__body" id="sheetBody"></div>
+  </div>
+</div>
+
+<footer id="foot"></footer>
+
+<script src="content.js"></script>
+<script src="app.js"></script>
+<script>
+  mountChrome("builds");
+
+  document.title = SITE.name + " — Builds";
+  document.getElementById("introText").textContent = SITE.buildsIntro;
+
+  const grid = document.getElementById("grid");
+  const overlay = document.getElementById("overlay");
+  const sheetBody = document.getElementById("sheetBody");
+  const sheetIdx = document.getElementById("sheetIdx");
+  let lastFocus = null;
+
+  const pad = n => String(n + 1).padStart(2, "0");
+
+  if (!BUILDS.length) {
+    grid.innerHTML = `
+      <div class="empty" style="grid-column:1/-1">
+        <p>Nothing here yet.</p>
+        <p class="hint">Open the Editor to add your first build.</p>
+      </div>`;
+  } else {
+    grid.innerHTML = BUILDS.map((b, i) => `
+      <button class="card" data-i="${i}" aria-haspopup="dialog">
+        <div class="card__top">
+          <span class="card__idx">${pad(i)} / ${esc(b.year || "")}</span>
+          <span class="stamp stamp--${esc(b.status || "prototype")}">${esc(b.status || "prototype")}</span>
+        </div>
+        <div class="card__name">${esc(b.name)}</div>
+        <div class="card__pitch">${esc(b.pitch || "")}</div>
+        ${(b.stack || []).length
+          ? `<div class="card__stack">${b.stack.map(s => `<span>${esc(s)}</span>`).join("")}</div>`
+          : ""}
+      </button>`).join("");
+  }
+
+  function openSheet(i) {
+    const b = BUILDS[i];
+    if (!b) return;
+    lastFocus = document.activeElement;
+
+    const links = [
+      b.repo ? `<a class="btn btn--primary" href="${esc(b.repo)}" target="_blank" rel="noopener">View repository</a>` : "",
+      b.demo ? `<a class="btn" href="${esc(b.demo)}" target="_blank" rel="noopener">Live demo</a>` : ""
+    ].filter(Boolean).join("");
+
+    sheetIdx.textContent = `Build ${pad(i)} — ${b.status || "prototype"}`;
+
+    sheetBody.innerHTML = `
+      <h2 id="sheetTitle">${esc(b.name)}</h2>
+      <p class="sheet__pitch">${esc(b.pitch || "")}</p>
+
+      <dl class="spec">
+        <dt>Status</dt><dd>${esc(b.status || "prototype")}</dd>
+        <dt>Year</dt><dd>${esc(b.year || "—")}</dd>
+        <dt>Stack</dt><dd>${esc((b.stack || []).join(", ") || "—")}</dd>
+        ${(b.tools || []).length ? `<dt>Tools</dt><dd>${esc(b.tools.join(", "))}</dd>` : ""}
+      </dl>
+
+      <div class="prose">${markdown(b.detail || "")}</div>
+
+      ${b.config ? `
+        <h3 style="font-family:var(--sans);font-size:14px;letter-spacing:-0.01em;margin:30px 0 8px">Install</h3>
+        <pre class="output" id="cfg">${esc(b.config)}</pre>
+        <button class="mini" id="copyCfg" style="margin-top:10px">Copy config</button>` : ""}
+
+      ${links ? `<div class="actions">${links}</div>` : ""}`;
+
+    overlay.setAttribute("data-open", "true");
+    document.body.style.overflow = "hidden";
+    document.getElementById("close").focus();
+
+    const copy = document.getElementById("copyCfg");
+    if (copy) {
+      copy.addEventListener("click", () => {
+        navigator.clipboard.writeText(b.config)
+          .then(() => toast("Config copied"))
+          .catch(() => toast("Couldn't copy — select the text instead"));
+      });
+    }
+  }
+
+  function closeSheet() {
+    overlay.setAttribute("data-open", "false");
+    document.body.style.overflow = "";
+    if (lastFocus) lastFocus.focus();
+  }
+
+  grid.addEventListener("click", e => {
+    const card = e.target.closest(".card");
+    if (card) openSheet(Number(card.dataset.i));
+  });
+
+  document.getElementById("close").addEventListener("click", closeSheet);
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeSheet(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && overlay.getAttribute("data-open") === "true") closeSheet();
+  });
+</script>
+</body>
+</html>
