@@ -28,7 +28,11 @@
   mountChrome("writing");
 
   const id = new URLSearchParams(location.search).get("id");
-  const post = POSTS.find(p => p.id === id);
+  const found = POSTS.find(p => p.id === id);
+
+  // Outside preview a draft is treated as missing, so the URL gives
+  // nothing away — not even the title.
+  const post = (found && isDraft(found) && !previewMode()) ? null : found;
   const root = document.getElementById("article");
 
   if (!post) {
@@ -41,6 +45,14 @@
     document.title = post.title + " — " + SITE.name;
     const meta = document.querySelector('meta[property="og:title"]');
     if (meta) meta.setAttribute("content", post.title);
+
+    // keep unpublished writing out of search results
+    if (isDraft(post)) {
+      const robots = document.createElement("meta");
+      robots.name = "robots";
+      robots.content = "noindex";
+      document.head.appendChild(robots);
+    }
 
     const html = markdown(post.body);
 
@@ -62,7 +74,15 @@
          </div>`
       : "";
 
-    root.innerHTML = `
+    const draftNote = isDraft(post)
+      ? `<div class="callout" style="margin-bottom:26px">
+           <b>This is a draft.</b> It's hidden from the writing index and
+           won't be indexed by search engines. Publish it from the Editor,
+           or ask the agent to publish it.
+         </div>`
+      : "";
+
+    root.innerHTML = draftNote + `
       <header class="article__head">
         <p class="eyebrow">${esc((post.tags || []).join(" / ") || "Writing")}</p>
         <h1>${esc(post.title)}</h1>

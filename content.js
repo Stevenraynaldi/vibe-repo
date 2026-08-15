@@ -14,7 +14,10 @@ const SITE = {
     "Prototypes, tools, and MCP servers. Some are finished. Most are not — that is the point.",
   linkedin: "https://linkedin.com/in/yourhandle",
   github: "https://github.com/yourhandle",
-  email: "you@example.com"
+  email: "you@example.com",
+  // Your live site, no trailing slash — e.g. "https://whitepaper.vercel.app".
+  // Only used to build clickable preview links; leave blank if you like.
+  url: ""
 };
 
 /* ------------------------------------------------------------
@@ -22,6 +25,11 @@ const SITE = {
    body uses Markdown: ## headings, **bold**, `code`, ```blocks```,
    - lists, > quotes, ![caption](images/file.png), [text](url)
    Images go in the /images folder, then reference images/name.png
+
+   status: "draft" hides a post from the site; "published" (or no status
+   at all) shows it. Read a draft on the live site by adding ?preview=1
+   to the URL. Note that a draft is hidden, not secret — its text is in
+   this file, which anyone can open.
    ------------------------------------------------------------ */
 
 const POSTS = [
@@ -30,6 +38,7 @@ const POSTS = [
     title: "Building a five-agent research crew that doesn't fall over",
     dek: "What breaks when you run analysts in parallel, and the three fixes that mattered.",
     date: "2026-08-04",
+    status: "published",
     tags: ["CrewAI", "Agents", "Python"],
     verified: "2026-08-04",
     deps: "crewai==1.15.10, yfinance==1.5.2, google-genai==1.65.0, pandas==3.0.5, Python 3.12",
@@ -69,6 +78,7 @@ Start with two agents. The orchestration overhead only pays for itself once the 
     title: "Why I publish the prototypes that didn't work",
     dek: "A short argument for shipping the half-finished thing.",
     date: "2026-07-19",
+    status: "published",
     tags: ["Notes"],
     verified: "",
     deps: "",
