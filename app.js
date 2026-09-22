@@ -147,18 +147,74 @@ function byNewest(a, b) {
   return String(b.date || "").localeCompare(String(a.date || ""));
 }
 
+/* ---------- drafts & preview ----------
+   A post with status "draft" is hidden from the public site. Anything
+   without a status counts as published, so older posts are unaffected.
+
+   Preview mode is switched on with ?preview=1 and off with ?preview=0.
+   It sticks for the rest of the browser session so you can click from
+   the index into a draft without carrying the parameter around.
+
+   Note: hidden is not secret. Draft text still ships inside content.js,
+   which anyone can open directly. Don't put anything sensitive in one.
+   -------------------------------------------------------------------- */
+
+const PREVIEW_KEY = "whitepaper-preview";
+
+function previewMode() {
+  const q = new URLSearchParams(location.search).get("preview");
+  try {
+    if (q === "1") sessionStorage.setItem(PREVIEW_KEY, "1");
+    if (q === "0") sessionStorage.removeItem(PREVIEW_KEY);
+    return sessionStorage.getItem(PREVIEW_KEY) === "1";
+  } catch (e) {
+    return q === "1"; // storage unavailable — fall back to the URL alone
+  }
+}
+
+function isDraft(p) {
+  return (p || {}).status === "draft";
+}
+
+function visiblePosts() {
+  return previewMode() ? [...POSTS] : POSTS.filter(p => !isDraft(p));
+}
+
+// Builds already use `status` for prototype/live/archived, so their
+// draft/published flag lives in a separate field: `visibility`.
+function isBuildDraft(b) {
+  return (b || {}).visibility === "draft";
+}
+
+function visibleBuilds() {
+  return previewMode() ? [...BUILDS] : BUILDS.filter(b => !isBuildDraft(b));
+}
+
+function previewExitHref() {
+  const u = new URL(location.href);
+  u.searchParams.set("preview", "0");
+  return u.href;
+}
+
 /* ---------- shared chrome ---------- */
 
 function mountChrome(current) {
   const head = document.getElementById("masthead");
   if (head) {
-    head.innerHTML = `
+    // The Editor is deliberately absent from the nav — it isn't deployed.
+    // Open admin.html locally when you want it.
+    const bar = previewMode()
+      ? `<div class="previewbar">
+           <span><b>Preview</b> — drafts are visible on this device only</span>
+           <a href="${esc(previewExitHref())}">Exit preview</a>
+         </div>`
+      : "";
+    head.innerHTML = bar + `
       <div class="wrap masthead__inner">
         <a class="wordmark" href="index.html">${esc(SITE.name)}<span>${esc(SITE.role)}</span></a>
         <nav class="nav">
           <a href="index.html" ${current === "writing" ? 'aria-current="page"' : ""}>Writing</a>
           <a href="builds.html" ${current === "builds" ? 'aria-current="page"' : ""}>Builds</a>
-          <a href="admin.html" ${current === "admin" ? 'aria-current="page"' : ""}>Editor</a>
         </nav>
       </div>`;
   }
@@ -174,7 +230,8 @@ function mountChrome(current) {
       <div class="wrap foot">
         <div>© ${new Date().getFullYear()} ${esc(SITE.name)}</div>
         <div>${links}</div>
-      </div>`;
+      </div>
+      <div class="wrap footnote"><a href="admin.html">Editor</a></div>`;
   }
 }
 

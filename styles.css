@@ -17,6 +17,7 @@
   --stamp-live:   #1B6E4B;
   --stamp-proto:  #8A5A12;
   --stamp-arch:   #6B6F76;
+  --stamp-draft:  #9A3D1F;
 
   --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --serif: "Spectral", Georgia, "Times New Roman", serif;
@@ -393,6 +394,29 @@ img { max-width: 100%; height: auto; display: block; }
 .stamp--live { color: var(--stamp-live); }
 .stamp--prototype { color: var(--stamp-proto); }
 .stamp--archived { color: var(--stamp-arch); }
+.stamp--draft { color: var(--stamp-draft); vertical-align: middle; margin-left: 8px; }
+
+.card__stamps { display: flex; align-items: center; gap: 6px; }
+.card__stamps .stamp--draft { margin-left: 0; }
+
+/* ---------- Preview bar ---------- */
+
+.previewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 14px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+  padding: 7px var(--gutter);
+}
+.previewbar b { font-weight: 600; }
+.previewbar a { color: var(--paper); text-decoration: underline; text-underline-offset: 2px; }
+.previewbar a:hover { color: #fff; }
 
 .card__name {
   font-family: var(--sans);
@@ -556,7 +580,7 @@ img { max-width: 100%; height: auto; display: block; }
 
 .foot {
   border-top: 1px solid var(--rule);
-  padding: 30px 0 50px;
+  padding: 30px 0 14px;
   font-family: var(--mono);
   font-size: 11.5px;
   letter-spacing: 0.04em;
@@ -567,6 +591,16 @@ img { max-width: 100%; height: auto; display: block; }
   gap: 12px;
 }
 .foot a { color: var(--ink-2); }
+
+.footnote { text-align: center; padding: 0 var(--gutter) 40px; }
+.footnote a {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  opacity: 0.7;
+}
+.footnote a:hover { opacity: 1; color: var(--ink-2); }
 
 /* ---------- Admin ---------- */
 
@@ -658,6 +692,10 @@ img { max-width: 100%; height: auto; display: block; }
   font-size: 14px;
 }
 .list__item span { color: var(--ink-2); font-family: var(--mono); font-size: 11px; }
+/* the generic span rule above would otherwise flatten these */
+.list__item .stamp { font-size: 9.5px; margin-right: 6px; }
+.list__item .stamp--draft { color: var(--stamp-draft); }
+.list__item .stamp--live { color: var(--stamp-live); }
 .mini {
   border: 1px solid var(--rule-strong);
   background: var(--paper);

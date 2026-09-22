@@ -14,7 +14,10 @@ const SITE = {
     "Prototypes, tools, and MCP servers. Some are finished. Most are not — that is the point.",
   linkedin: "https://linkedin.com/in/yourhandle",
   github: "https://github.com/yourhandle",
-  email: "you@example.com"
+  email: "you@example.com",
+  // Your live site, no trailing slash — e.g. "https://whitepaper.vercel.app".
+  // Only used to build clickable preview links; leave blank if you like.
+  url: ""
 };
 
 /* ------------------------------------------------------------
@@ -22,6 +25,11 @@ const SITE = {
    body uses Markdown: ## headings, **bold**, `code`, ```blocks```,
    - lists, > quotes, ![caption](images/file.png), [text](url)
    Images go in the /images folder, then reference images/name.png
+
+   status: "draft" hides a post from the site; "published" (or no status
+   at all) shows it. Read a draft on the live site by adding ?preview=1
+   to the URL. Note that a draft is hidden, not secret — its text is in
+   this file, which anyone can open.
    ------------------------------------------------------------ */
 
 const POSTS = [
@@ -30,6 +38,7 @@ const POSTS = [
     title: "Building a five-agent research crew that doesn't fall over",
     dek: "What breaks when you run analysts in parallel, and the three fixes that mattered.",
     date: "2026-08-04",
+    status: "published",
     tags: ["CrewAI", "Agents", "Python"],
     verified: "2026-08-04",
     deps: "crewai==1.15.10, yfinance==1.5.2, google-genai==1.65.0, pandas==3.0.5, Python 3.12",
@@ -69,6 +78,7 @@ Start with two agents. The orchestration overhead only pays for itself once the 
     title: "Why I publish the prototypes that didn't work",
     dek: "A short argument for shipping the half-finished thing.",
     date: "2026-07-19",
+    status: "published",
     tags: ["Notes"],
     verified: "",
     deps: "",
@@ -88,7 +98,10 @@ That's the whole thing.`
 
 /* ------------------------------------------------------------
    BUILDS
-   status: "prototype" | "live" | "archived"
+   status: "prototype" | "live" | "archived" — how finished the build is
+   visibility: "draft" | "published" (or absent) — whether it shows at all.
+     A draft build is hidden from the Builds page the same way a draft post
+     is hidden from Writing; read one live with ?preview=1.
    config: optional — shown as a copyable code block (great for MCP servers)
    ------------------------------------------------------------ */
 
@@ -98,6 +111,7 @@ const BUILDS = [
     name: "Market Research MCP",
     pitch: "An MCP server that gives Claude live market data, filings, and consensus estimates.",
     status: "live",
+    visibility: "published",
     stack: ["TypeScript", "MCP", "yfinance"],
     year: "2026",
     repo: "https://github.com/yourhandle/market-research-mcp",
@@ -120,6 +134,7 @@ The interesting part was tool granularity. One fat get_data tool made the model 
     name: "Five-Agent Research Crew",
     pitch: "Parallel analyst agents that produce one sourced research note from a single ticker.",
     status: "prototype",
+    visibility: "published",
     stack: ["Python", "CrewAI", "Gemini"],
     year: "2026",
     repo: "https://github.com/yourhandle/research-crew",
@@ -135,6 +150,7 @@ Still a prototype because the editor's merge quality drops sharply when analysts
     name: "Thread Composer",
     pitch: "Turns a long post into a LinkedIn-native version that stands alone without the link.",
     status: "archived",
+    visibility: "published",
     stack: ["React", "Claude API"],
     year: "2025",
     repo: "",

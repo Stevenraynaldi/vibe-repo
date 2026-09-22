@@ -1,0 +1,10 @@
+# Files kept in the repo but never uploaded to the live site.
+
+# admin.html IS deployed — it's gated by middleware.js + the Google login,
+# not by hiding the file. See README.md "Setting up the editor's login".
+
+# Agent skills and local settings.
+.claude
+
+# Repo documentation, not site content.
+README.md

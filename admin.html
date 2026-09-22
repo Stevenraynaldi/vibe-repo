@@ -23,10 +23,21 @@
 
   <div class="admin">
     <div class="callout">
-      <b>How publishing works.</b> This editor runs entirely in your browser — nothing is saved to the server, so
-      the page needs no password. When you're happy, click <b>Download content.js</b>, drop the file into your
-      repo replacing the old one, and commit. Your site updates in about 20 seconds.
+      <b>This page is gated.</b> A small serverless function checks that you signed in with the site owner's
+      Google account before this page is even served — see <code>middleware.js</code> and
+      <code>README.md</code> if you're setting that up for the first time.
+      <a href="/api/auth/logout" style="float:right">Log out</a>
+      <br><br>
+      <b>Publishing.</b> New posts and builds start as <b>drafts</b> — hidden from the site, and invisible unless
+      you add <code>?preview=1</code> to the URL. Flip one live with <b>Publish</b> below, then click
+      <b>Download content.js</b>, replace the file in your repo, and commit. Or skip all that and ask the agent:
+      <i>publish the post about X</i>.
+      <br><br>
+      A draft is hidden, not secret — its text still ships inside the public <code>content.js</code>. The login
+      protects who can use this page, not what's in that file.
     </div>
+
+    <div id="staleWarn"></div>
 
     <div class="tabs" role="tablist">
       <button role="tab" aria-selected="true"  data-tab="posts">Posts</button>
@@ -66,17 +77,43 @@ document.title = "Editor — " + SITE.name;
 
 /* ---------- state ---------- */
 
-const KEY = "whitepaper-draft-v1";
-let state = { site: { ...SITE }, posts: [...POSTS], builds: [...BUILDS] };
+const KEY = "whitepaper-draft-v2";
+
+const fromFile = () => ({ site: { ...SITE }, posts: [...POSTS], builds: [...BUILDS] });
+
+/* A fingerprint of content.js as it was when this draft started.
+   content.js can also be written by the blog-draft / blog-publish skills,
+   and this editor prefers its own saved copy — so without this check an
+   imported draft would be silently wiped the next time you exported. */
+const fingerprint = s => JSON.stringify([s.site, s.posts, s.builds]);
+const FILE_FP = fingerprint(fromFile());
+
+let state = fromFile();
+let stale = false;
+let base = FILE_FP;
 
 try {
-  const saved = localStorage.getItem(KEY);
-  if (saved) state = JSON.parse(saved);
+  const saved = JSON.parse(localStorage.getItem(KEY) || "null");
+  if (saved && saved.state) {
+    state = saved.state;
+    base = saved.base;
+    stale = saved.base !== FILE_FP;
+  }
 } catch (e) { /* storage unavailable — carry on in memory */ }
 
+/* The warning survives reloads until you resolve it one way or the other,
+   so it can't be lost by carrying on editing. */
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  try { localStorage.setItem(KEY, JSON.stringify({ base: stale ? base : FILE_FP, state })); } catch (e) {}
   render();
+}
+
+function resolveStale(takeFile) {
+  if (takeFile) state = fromFile();
+  stale = false;
+  base = FILE_FP;
+  save();
+  toast(takeFile ? "Loaded from content.js" : "Kept your local draft");
 }
 
 let tab = "posts";
@@ -96,6 +133,7 @@ function serialise() {
     title: ${str(p.title)},
     dek: ${str(p.dek)},
     date: ${str(p.date)},
+    status: ${str(p.status || "published")},
     tags: ${arr(p.tags)},
     verified: ${str(p.verified)},
     deps: ${str(p.deps)},
@@ -107,6 +145,7 @@ function serialise() {
     name: ${str(b.name)},
     pitch: ${str(b.pitch)},
     status: ${str(b.status)},
+    visibility: ${str(b.visibility || "published")},
     stack: ${arr(b.stack)},
     year: ${str(b.year)},
     repo: ${str(b.repo)},
@@ -125,7 +164,8 @@ const SITE = {
   buildsIntro: ${str(s.buildsIntro)},
   linkedin: ${str(s.linkedin)},
   github: ${str(s.github)},
-  email: ${str(s.email)}
+  email: ${str(s.email)},
+  url: ${str(s.url)}
 };
 
 const POSTS = [
@@ -177,13 +217,16 @@ function renderForm() {
       field("LinkedIn URL", "f_li", s.linkedin) +
       field("GitHub URL", "f_gh", s.github) +
       field("Email", "f_em", s.email) +
+      field("Live site URL", "f_url", s.url, { ph: "https://yoursite.vercel.app",
+        note: "No trailing slash. Only used to build preview links — optional." }) +
       `<button class="btn btn--primary" id="saveSite">Save site details</button>`;
 
     document.getElementById("saveSite").onclick = () => {
       state.site = {
         name: val("f_name"), role: val("f_role"),
         writingIntro: val("f_wi"), buildsIntro: val("f_bi"),
-        linkedin: val("f_li"), github: val("f_gh"), email: val("f_em")
+        linkedin: val("f_li"), github: val("f_gh"), email: val("f_em"),
+        url: val("f_url")
       };
       save();
       toast("Site details saved");
@@ -199,12 +242,15 @@ function renderForm() {
       field("Summary line", "p_dek", p.dek, { note: "One sentence. Shows on the index and in link previews." }) +
       `<div class="row">` +
         field("Date", "p_date", p.date || new Date().toISOString().slice(0, 10), { type: "date" }) +
-        field("Tags", "p_tags", (p.tags || []).join(", "), { ph: "Agents, Python" }) +
+        field("Status", "p_status", p.status || (editing !== null ? "published" : "draft"),
+          { select: ["draft", "published"],
+            note: "Drafts are hidden from the site. Read one live with ?preview=1." }) +
       `</div>` +
       `<div class="row">` +
+        field("Tags", "p_tags", (p.tags || []).join(", "), { ph: "Agents, Python" }) +
         field("Verified on", "p_ver", p.verified, { type: "date" }) +
-        field("Versions", "p_deps", p.deps, { ph: "crewai==1.15.10, Python 3.12" }) +
       `</div>` +
+      field("Versions", "p_deps", p.deps, { ph: "crewai==1.15.10, Python 3.12" }) +
       field("Body", "p_body", p.body, { area: true, rows: 16,
         note: "Markdown. Use ## for sections (3+ builds a contents list), ``` for code, ![caption](images/file.png) for images." }) +
       `<button class="btn btn--primary" id="savePost">${editing !== null ? "Update post" : "Add post"}</button>` +
@@ -216,6 +262,7 @@ function renderForm() {
       const item = {
         id: (editing !== null && state.posts[editing].id) || slug(t),
         title: t, dek: val("p_dek"), date: val("p_date"),
+        status: val("p_status") || "draft",
         tags: csv(val("p_tags")), verified: val("p_ver"),
         deps: val("p_deps"), body: val("p_body")
       };
@@ -224,7 +271,9 @@ function renderForm() {
       else state.posts.unshift(item);
       editing = null;
       save();
-      toast(wasEditing ? "Post updated" : "Post added");
+      toast(wasEditing
+        ? "Post updated"
+        : (item.status === "draft" ? "Draft added" : "Post added"));
     };
     return;
   }
@@ -235,9 +284,12 @@ function renderForm() {
     field("Name", "b_name", b.name, { ph: "Market Research MCP" }) +
     field("One-line pitch", "b_pitch", b.pitch, { note: "What it does, in plain words. Shows on the card." }) +
     `<div class="row">` +
-      field("Status", "b_status", b.status || "prototype", { select: ["prototype", "live", "archived"] }) +
-      field("Year", "b_year", b.year || String(new Date().getFullYear())) +
+      field("Status", "b_status", b.status || "prototype", { select: ["prototype", "live", "archived"],
+        note: "How finished it is — shown on the card." }) +
+      field("Visibility", "b_vis", b.visibility || (editing !== null ? "published" : "draft"),
+        { select: ["draft", "published"], note: "Drafts are hidden from the Builds page." }) +
     `</div>` +
+    field("Year", "b_year", b.year || String(new Date().getFullYear())) +
     field("Stack", "b_stack", (b.stack || []).join(", "), { ph: "TypeScript, MCP" }) +
     `<div class="row">` +
       field("Repository URL", "b_repo", b.repo) +
@@ -255,30 +307,70 @@ function renderForm() {
     const item = {
       id: (editing !== null && state.builds[editing].id) || slug(n),
       name: n, pitch: val("b_pitch"), status: val("b_status"),
+      visibility: val("b_vis") || "draft",
       stack: csv(val("b_stack")), year: val("b_year"),
       repo: val("b_repo"), demo: val("b_demo"),
       detail: val("b_detail"), tools: csv(val("b_tools")), config: val("b_config")
     };
-    if (editing !== null) state.builds[editing] = item;
+    const wasEditing = editing !== null;
+    if (wasEditing) state.builds[editing] = item;
     else state.builds.unshift(item);
     editing = null;
     save();
-    toast("Build saved");
+    toast(wasEditing
+      ? "Build updated"
+      : (item.visibility === "draft" ? "Draft build added" : "Build added"));
   };
 }
+
+// Posts track draft/published on `status`; builds keep `status` for
+// prototype/live/archived, so their draft/published flag is `visibility`.
+const DRAFT_FIELD = { posts: "status", builds: "visibility" };
 
 function listOf(kind) {
   const items = state[kind];
   if (!items.length) return "";
-  return `<div class="list">` + items.map((it, i) => `
+  const field = DRAFT_FIELD[kind];
+  const isPosts = kind === "posts";
+
+  return `<div class="list">` + items.map((it, i) => {
+    const draft = it[field] === "draft";
+    const meta = `<span class="stamp stamp--${draft ? "draft" : "live"}">${draft ? "draft" : "live"}</span>` +
+      (isPosts ? `<span>${esc(it.date || "")}</span>` : `<span>${esc(it.status || "")}</span>`);
+
+    return `
     <div class="list__item">
-      <div>${esc(it.title || it.name)} <span>${esc(it.date || it.status || "")}</span></div>
+      <div>${esc(it.title || it.name)} ${meta}</div>
       <div style="display:flex;gap:6px">
+        <button class="mini" data-act="toggle" data-kind="${kind}" data-i="${i}">${
+          draft ? "Publish" : "Unpublish"}</button>
         <button class="mini" data-act="edit" data-kind="${kind}" data-i="${i}">Edit</button>
         <button class="mini" data-act="del" data-kind="${kind}" data-i="${i}">Delete</button>
         <button class="mini" data-act="up" data-kind="${kind}" data-i="${i}">↑</button>
       </div>
-    </div>`).join("") + `</div>`;
+    </div>`;
+  }).join("") + `</div>`;
+}
+
+/* Warns when content.js has moved on underneath a saved draft — which is
+   what happens if a skill imported or published a post since you last
+   used this page. */
+function renderStale() {
+  const el = document.getElementById("staleWarn");
+  if (!el) return;
+  if (!stale) { el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <div class="callout" style="border-left-color:var(--stamp-draft);background:#FBF1EC">
+      <b>content.js has changed since you last edited here.</b>
+      Something else — probably an imported or published post — has been written to the file.
+      Exporting your saved draft now would undo it.
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="mini" id="takeFile">Load from content.js</button>
+        <button class="mini" id="takeDraft">Keep my draft</button>
+      </div>
+    </div>`;
+  document.getElementById("takeFile").onclick = () => resolveStale(true);
+  document.getElementById("takeDraft").onclick = () => resolveStale(false);
 }
 
 /* ---------- events ---------- */
@@ -300,6 +392,18 @@ document.addEventListener("click", e => {
     const [m] = state[kind].splice(idx, 1);
     state[kind].splice(idx - 1, 0, m);
     save();
+  }
+  if (act === "toggle") {
+    const it = state[kind][idx];
+    const field = DRAFT_FIELD[kind];
+    // Nothing else on the item is touched — for posts that means the date
+    // is left alone; it's editable in the form above, so nothing rewrites
+    // the date of an old post behind your back.
+    it[field] = it[field] === "draft" ? "published" : "draft";
+    save();
+    toast(it[field] === "draft"
+      ? "Back to draft — export and commit to take it down"
+      : "Published — export and commit to make it live");
   }
 });
 
@@ -333,6 +437,7 @@ document.getElementById("downloadOut").onclick = () => {
 
 function render() {
   document.getElementById("out").textContent = serialise();
+  renderStale();
   renderForm();
 }
 
