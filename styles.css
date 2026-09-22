@@ -4,8 +4,11 @@
    ============================================================ */
 
 :root {
-  --paper:        #FBFBF9;
-  --paper-2:      #F4F4F1;
+  color-scheme: light dark;
+
+  --paper:        #F7F6F3;
+  --paper-rgb:    247, 246, 243;
+  --paper-2:      #F0EFEC;
   --ink:          #14161A;
   --ink-2:        #5C626B;
   --ink-3:        #8A9099;
@@ -13,6 +16,11 @@
   --rule-strong:  #C9CBC6;
   --accent:       #1F4D9C;
   --accent-soft:  #EAEFF8;
+  --accent-ink:   #1B3A6B;
+  --accent-hover: #17407F;
+  --code-bg:      #F7F7F4;
+  --warn-soft:    #FBF1EC;
+  --grid-line:    rgba(20, 22, 26, 0.035);
 
   --stamp-live:   #1B6E4B;
   --stamp-proto:  #8A5A12;
@@ -25,6 +33,31 @@
 
   --measure: 68ch;
   --gutter: 24px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:        #17181A;
+    --paper-rgb:    23, 24, 26;
+    --paper-2:      #1E2023;
+    --ink:          #EDEDE9;
+    --ink-2:        #A9ADB3;
+    --ink-3:        #797D84;
+    --rule:         #2A2C30;
+    --rule-strong:  #3C3F44;
+    --accent:       #6E9EEA;
+    --accent-soft:  #1B2A42;
+    --accent-ink:   #BFD4F5;
+    --accent-hover: #8FB4EF;
+    --code-bg:      #1D1F22;
+    --warn-soft:    #2E2119;
+    --grid-line:    rgba(255, 255, 255, 0.045);
+
+    --stamp-live:   #3FB37E;
+    --stamp-proto:  #D69A3D;
+    --stamp-arch:   #9BA0A8;
+    --stamp-draft:  #E07750;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -69,7 +102,7 @@ img { max-width: 100%; height: auto; display: block; }
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(251, 251, 249, 0.88);
+  background: rgba(var(--paper-rgb), 0.88);
   backdrop-filter: saturate(140%) blur(8px);
   border-bottom: 1px solid var(--rule);
 }
@@ -227,7 +260,7 @@ img { max-width: 100%; height: auto; display: block; }
   font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.65;
-  color: #1B3A6B;
+  color: var(--accent-ink);
   word-break: break-word;
 }
 .verify b { font-weight: 600; letter-spacing: 0.02em; }
@@ -309,7 +342,7 @@ img { max-width: 100%; height: auto; display: block; }
   font-family: var(--mono);
   font-size: 13.5px;
   line-height: 1.62;
-  background: #F7F7F4;
+  background: var(--code-bg);
   border: 1px solid var(--rule);
   border-left: 2.5px solid var(--rule-strong);
   padding: 16px 18px;
@@ -322,8 +355,8 @@ img { max-width: 100%; height: auto; display: block; }
 
 .builds-sheet {
   background-image:
-    linear-gradient(rgba(20,22,26,0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20,22,26,0.035) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 26px 26px;
   border-bottom: 1px solid var(--rule);
 }
@@ -561,7 +594,7 @@ img { max-width: 100%; height: auto; display: block; }
 }
 .btn:hover { background: var(--paper-2); border-color: var(--ink-3); text-decoration: none; }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn--primary:hover { background: #17407F; border-color: #17407F; }
+.btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 /* ---------- Empty state ---------- */
 
@@ -611,6 +644,12 @@ img { max-width: 100%; height: auto; display: block; }
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 36px;
   align-items: start;
+}
+
+.admin-col {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 
 .panel {
@@ -676,7 +715,7 @@ img { max-width: 100%; height: auto; display: block; }
   line-height: 1.55;
 }
 .field textarea { font-family: var(--mono); font-size: 13px; resize: vertical; min-height: 90px; }
-.field .note { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 5px; }
+.note { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 5px; }
 
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
@@ -712,7 +751,7 @@ img { max-width: 100%; height: auto; display: block; }
   font-family: var(--mono);
   font-size: 11.5px;
   line-height: 1.55;
-  background: #F7F7F4;
+  background: var(--code-bg);
   border: 1px solid var(--rule);
   padding: 14px;
   max-height: 460px;
@@ -729,10 +768,11 @@ img { max-width: 100%; height: auto; display: block; }
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.6;
-  color: #1B3A6B;
+  color: var(--accent-ink);
   margin-bottom: 26px;
 }
 .callout b { font-weight: 600; }
+.callout--warn { border-left-color: var(--stamp-draft); background: var(--warn-soft); color: var(--ink); }
 
 .toast {
   position: fixed;
