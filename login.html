@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;450;500;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<main class="wrap wrap--prose" style="padding-top:90px;text-align:center">
+  <p class="eyebrow">Editor</p>
+  <h1>Sign in to continue</h1>
+  <p class="hint" id="msg">Only the site owner's Google account can get in.</p>
+
+  <!--
+    Client ID is public by design (it identifies the app to Google, not a
+    secret) — see README.md "Setting up the editor's login" for how to get
+    one and where else it needs to be pasted.
+  -->
+  <div id="g_id_onload"
+       data-client_id="YOUR_CLIENT_ID.apps.googleusercontent.com"
+       data-callback="handleCredentialResponse">
+  </div>
+  <div class="g_id_signin" data-type="standard" style="display:inline-block;margin-top:24px"></div>
+</main>
+
+<script>
+function handleCredentialResponse(response) {
+  const msg = document.getElementById("msg");
+  msg.textContent = "Checking…";
+
+  fetch("/api/auth/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential: response.credential })
+  })
+    .then(r => {
+      if (r.ok) { location.href = "/admin.html"; return; }
+      msg.textContent = r.status === 403
+        ? "That Google account isn't the site owner."
+        : "Sign-in failed — try again.";
+    })
+    .catch(() => { msg.textContent = "Network error — try again."; });
+}
+</script>
+</body>
+</html>

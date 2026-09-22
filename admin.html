@@ -23,15 +23,18 @@
 
   <div class="admin">
     <div class="callout">
-      <b>This page is yours alone.</b> It's listed in <code>.vercelignore</code>, so it never reaches the live
-      site and there's no <code>/admin.html</code> out there to find. Open it locally when you need it.
+      <b>This page is gated.</b> A small serverless function checks that you signed in with the site owner's
+      Google account before this page is even served — see <code>middleware.js</code> and
+      <code>README.md</code> if you're setting that up for the first time.
+      <a href="/api/auth/logout" style="float:right">Log out</a>
       <br><br>
-      <b>Publishing.</b> New posts start as <b>drafts</b> — hidden from the writing index, and invisible on the
-      live site unless you add <code>?preview=1</code> to the URL. Flip one live with <b>Publish</b> below, then
-      click <b>Download content.js</b>, replace the file in your repo, and commit. Or skip all that and ask the
-      agent: <i>publish the post about X</i>.
+      <b>Publishing.</b> New posts and builds start as <b>drafts</b> — hidden from the site, and invisible unless
+      you add <code>?preview=1</code> to the URL. Flip one live with <b>Publish</b> below, then click
+      <b>Download content.js</b>, replace the file in your repo, and commit. Or skip all that and ask the agent:
+      <i>publish the post about X</i>.
       <br><br>
-      A draft is hidden, not secret — its text still ships inside the public <code>content.js</code>.
+      A draft is hidden, not secret — its text still ships inside the public <code>content.js</code>. The login
+      protects who can use this page, not what's in that file.
     </div>
 
     <div id="staleWarn"></div>
@@ -142,6 +145,7 @@ function serialise() {
     name: ${str(b.name)},
     pitch: ${str(b.pitch)},
     status: ${str(b.status)},
+    visibility: ${str(b.visibility || "published")},
     stack: ${arr(b.stack)},
     year: ${str(b.year)},
     repo: ${str(b.repo)},
@@ -280,9 +284,12 @@ function renderForm() {
     field("Name", "b_name", b.name, { ph: "Market Research MCP" }) +
     field("One-line pitch", "b_pitch", b.pitch, { note: "What it does, in plain words. Shows on the card." }) +
     `<div class="row">` +
-      field("Status", "b_status", b.status || "prototype", { select: ["prototype", "live", "archived"] }) +
-      field("Year", "b_year", b.year || String(new Date().getFullYear())) +
+      field("Status", "b_status", b.status || "prototype", { select: ["prototype", "live", "archived"],
+        note: "How finished it is — shown on the card." }) +
+      field("Visibility", "b_vis", b.visibility || (editing !== null ? "published" : "draft"),
+        { select: ["draft", "published"], note: "Drafts are hidden from the Builds page." }) +
     `</div>` +
+    field("Year", "b_year", b.year || String(new Date().getFullYear())) +
     field("Stack", "b_stack", (b.stack || []).join(", "), { ph: "TypeScript, MCP" }) +
     `<div class="row">` +
       field("Repository URL", "b_repo", b.repo) +
@@ -300,36 +307,43 @@ function renderForm() {
     const item = {
       id: (editing !== null && state.builds[editing].id) || slug(n),
       name: n, pitch: val("b_pitch"), status: val("b_status"),
+      visibility: val("b_vis") || "draft",
       stack: csv(val("b_stack")), year: val("b_year"),
       repo: val("b_repo"), demo: val("b_demo"),
       detail: val("b_detail"), tools: csv(val("b_tools")), config: val("b_config")
     };
-    if (editing !== null) state.builds[editing] = item;
+    const wasEditing = editing !== null;
+    if (wasEditing) state.builds[editing] = item;
     else state.builds.unshift(item);
     editing = null;
     save();
-    toast("Build saved");
+    toast(wasEditing
+      ? "Build updated"
+      : (item.visibility === "draft" ? "Draft build added" : "Build added"));
   };
 }
+
+// Posts track draft/published on `status`; builds keep `status` for
+// prototype/live/archived, so their draft/published flag is `visibility`.
+const DRAFT_FIELD = { posts: "status", builds: "visibility" };
 
 function listOf(kind) {
   const items = state[kind];
   if (!items.length) return "";
+  const field = DRAFT_FIELD[kind];
   const isPosts = kind === "posts";
 
   return `<div class="list">` + items.map((it, i) => {
-    const draft = isPosts && it.status === "draft";
-    const meta = isPosts
-      ? `<span class="stamp stamp--${draft ? "draft" : "live"}">${draft ? "draft" : "live"}</span>` +
-        `<span>${esc(it.date || "")}</span>`
-      : `<span>${esc(it.status || "")}</span>`;
+    const draft = it[field] === "draft";
+    const meta = `<span class="stamp stamp--${draft ? "draft" : "live"}">${draft ? "draft" : "live"}</span>` +
+      (isPosts ? `<span>${esc(it.date || "")}</span>` : `<span>${esc(it.status || "")}</span>`);
 
     return `
     <div class="list__item">
       <div>${esc(it.title || it.name)} ${meta}</div>
       <div style="display:flex;gap:6px">
-        ${isPosts ? `<button class="mini" data-act="toggle" data-kind="posts" data-i="${i}">${
-          draft ? "Publish" : "Unpublish"}</button>` : ""}
+        <button class="mini" data-act="toggle" data-kind="${kind}" data-i="${i}">${
+          draft ? "Publish" : "Unpublish"}</button>
         <button class="mini" data-act="edit" data-kind="${kind}" data-i="${i}">Edit</button>
         <button class="mini" data-act="del" data-kind="${kind}" data-i="${i}">Delete</button>
         <button class="mini" data-act="up" data-kind="${kind}" data-i="${i}">↑</button>
@@ -380,12 +394,14 @@ document.addEventListener("click", e => {
     save();
   }
   if (act === "toggle") {
-    const p = state.posts[idx];
-    // The date is left alone deliberately — it's editable in the form above,
-    // so nothing rewrites the date of an old post behind your back.
-    p.status = p.status === "draft" ? "published" : "draft";
+    const it = state[kind][idx];
+    const field = DRAFT_FIELD[kind];
+    // Nothing else on the item is touched — for posts that means the date
+    // is left alone; it's editable in the form above, so nothing rewrites
+    // the date of an old post behind your back.
+    it[field] = it[field] === "draft" ? "published" : "draft";
     save();
-    toast(p.status === "draft"
+    toast(it[field] === "draft"
       ? "Back to draft — export and commit to take it down"
       : "Published — export and commit to make it live");
   }

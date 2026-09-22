@@ -180,6 +180,16 @@ function visiblePosts() {
   return previewMode() ? [...POSTS] : POSTS.filter(p => !isDraft(p));
 }
 
+// Builds already use `status` for prototype/live/archived, so their
+// draft/published flag lives in a separate field: `visibility`.
+function isBuildDraft(b) {
+  return (b || {}).visibility === "draft";
+}
+
+function visibleBuilds() {
+  return previewMode() ? [...BUILDS] : BUILDS.filter(b => !isBuildDraft(b));
+}
+
 function previewExitHref() {
   const u = new URL(location.href);
   u.searchParams.set("preview", "0");
@@ -220,7 +230,8 @@ function mountChrome(current) {
       <div class="wrap foot">
         <div>© ${new Date().getFullYear()} ${esc(SITE.name)}</div>
         <div>${links}</div>
-      </div>`;
+      </div>
+      <div class="wrap footnote"><a href="admin.html">Editor</a></div>`;
   }
 }
 

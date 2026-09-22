@@ -63,18 +63,26 @@
 
   const pad = n => String(n + 1).padStart(2, "0");
 
-  if (!BUILDS.length) {
+  // The single source of truth for both the grid and the popup below —
+  // openSheet(i) indexes into this, not the raw BUILDS array, so a filtered
+  // list and the click handler's index never fall out of sync.
+  const visible = visibleBuilds();
+
+  if (!visible.length) {
     grid.innerHTML = `
       <div class="empty" style="grid-column:1/-1">
         <p>Nothing here yet.</p>
         <p class="hint">Open the Editor to add your first build.</p>
       </div>`;
   } else {
-    grid.innerHTML = BUILDS.map((b, i) => `
+    grid.innerHTML = visible.map((b, i) => `
       <button class="card" data-i="${i}" aria-haspopup="dialog">
         <div class="card__top">
           <span class="card__idx">${pad(i)} / ${esc(b.year || "")}</span>
-          <span class="stamp stamp--${esc(b.status || "prototype")}">${esc(b.status || "prototype")}</span>
+          <span class="card__stamps">
+            ${isBuildDraft(b) ? `<span class="stamp stamp--draft">draft</span>` : ""}
+            <span class="stamp stamp--${esc(b.status || "prototype")}">${esc(b.status || "prototype")}</span>
+          </span>
         </div>
         <div class="card__name">${esc(b.name)}</div>
         <div class="card__pitch">${esc(b.pitch || "")}</div>
@@ -85,7 +93,7 @@
   }
 
   function openSheet(i) {
-    const b = BUILDS[i];
+    const b = visible[i];
     if (!b) return;
     lastFocus = document.activeElement;
 

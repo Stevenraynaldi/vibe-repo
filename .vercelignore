@@ -1,9 +1,7 @@
 # Files kept in the repo but never uploaded to the live site.
 
-# The editor is yours alone. It stays in version control, but it isn't
-# deployed — so there is no /admin.html on the public site to find.
-# Open it locally instead (see README).
-admin.html
+# admin.html IS deployed — it's gated by middleware.js + the Google login,
+# not by hiding the file. See README.md "Setting up the editor's login".
 
 # Agent skills and local settings.
 .claude

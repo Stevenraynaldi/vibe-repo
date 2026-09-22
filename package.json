@@ -1,0 +1,9 @@
+{
+  "name": "whitepaper",
+  "private": true,
+  "type": "module",
+  "description": "Static site. The only code here that runs server-side is the editor's login gate — see README.md.",
+  "dependencies": {
+    "jose": "^5.9.6"
+  }
+}

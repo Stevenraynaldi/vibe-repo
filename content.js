@@ -98,7 +98,10 @@ That's the whole thing.`
 
 /* ------------------------------------------------------------
    BUILDS
-   status: "prototype" | "live" | "archived"
+   status: "prototype" | "live" | "archived" — how finished the build is
+   visibility: "draft" | "published" (or absent) — whether it shows at all.
+     A draft build is hidden from the Builds page the same way a draft post
+     is hidden from Writing; read one live with ?preview=1.
    config: optional — shown as a copyable code block (great for MCP servers)
    ------------------------------------------------------------ */
 
@@ -108,6 +111,7 @@ const BUILDS = [
     name: "Market Research MCP",
     pitch: "An MCP server that gives Claude live market data, filings, and consensus estimates.",
     status: "live",
+    visibility: "published",
     stack: ["TypeScript", "MCP", "yfinance"],
     year: "2026",
     repo: "https://github.com/yourhandle/market-research-mcp",
@@ -130,6 +134,7 @@ The interesting part was tool granularity. One fat get_data tool made the model 
     name: "Five-Agent Research Crew",
     pitch: "Parallel analyst agents that produce one sourced research note from a single ticker.",
     status: "prototype",
+    visibility: "published",
     stack: ["Python", "CrewAI", "Gemini"],
     year: "2026",
     repo: "https://github.com/yourhandle/research-crew",
@@ -145,6 +150,7 @@ Still a prototype because the editor's merge quality drops sharply when analysts
     name: "Thread Composer",
     pitch: "Turns a long post into a LinkedIn-native version that stands alone without the link.",
     status: "archived",
+    visibility: "published",
     stack: ["React", "Claude API"],
     year: "2025",
     repo: "",
