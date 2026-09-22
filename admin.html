@@ -46,9 +46,16 @@
     </div>
 
     <div class="admin-cols">
-      <div class="panel">
-        <div class="panel__bar"><span id="formTitle">New post</span><button class="mini" id="clearForm">Clear</button></div>
-        <div class="panel__body" id="formBody"></div>
+      <div class="admin-col">
+        <div class="panel">
+          <div class="panel__bar"><span id="formTitle">New post</span><button class="mini" id="clearForm">Clear</button></div>
+          <div class="panel__body" id="formBody"></div>
+        </div>
+
+        <div class="panel" id="listPanel">
+          <div class="panel__bar"><span id="listTitle">Existing posts</span></div>
+          <div class="panel__body" id="listBody"></div>
+        </div>
       </div>
 
       <div class="panel">
@@ -219,7 +226,9 @@ function renderForm() {
       field("Email", "f_em", s.email) +
       field("Live site URL", "f_url", s.url, { ph: "https://yoursite.vercel.app",
         note: "No trailing slash. Only used to build preview links — optional." }) +
-      `<button class="btn btn--primary" id="saveSite">Save site details</button>`;
+      `<button class="btn btn--primary" id="saveSite">Save site details</button>` +
+      `<p class="note">This only updates the preview on the right — like posts and builds, nothing on the
+       live site changes until you download content.js, replace it in your repo, and commit.</p>`;
 
     document.getElementById("saveSite").onclick = () => {
       state.site = {
@@ -229,7 +238,7 @@ function renderForm() {
         url: val("f_url")
       };
       save();
-      toast("Site details saved");
+      toast("Saved here — download content.js and commit to make it live");
     };
     return;
   }
@@ -253,8 +262,7 @@ function renderForm() {
       field("Versions", "p_deps", p.deps, { ph: "crewai==1.15.10, Python 3.12" }) +
       field("Body", "p_body", p.body, { area: true, rows: 16,
         note: "Markdown. Use ## for sections (3+ builds a contents list), ``` for code, ![caption](images/file.png) for images." }) +
-      `<button class="btn btn--primary" id="savePost">${editing !== null ? "Update post" : "Add post"}</button>` +
-      listOf("posts");
+      `<button class="btn btn--primary" id="savePost">${editing !== null ? "Update post" : "Add post"}</button>`;
 
     document.getElementById("savePost").onclick = () => {
       const t = val("p_title").trim();
@@ -298,8 +306,7 @@ function renderForm() {
     field("Details", "b_detail", b.detail, { area: true, rows: 7, note: "Markdown. Shows inside the pop-up." }) +
     field("Tool names", "b_tools", (b.tools || []).join(", "), { ph: "get_quote, get_filings", note: "For MCP servers. Leave blank otherwise." }) +
     field("Install config", "b_config", b.config, { area: true, rows: 7, note: "Pasted into the pop-up with a copy button. Great for MCP JSON." }) +
-    `<button class="btn btn--primary" id="saveBuild">${editing !== null ? "Update build" : "Add build"}</button>` +
-    listOf("builds");
+    `<button class="btn btn--primary" id="saveBuild">${editing !== null ? "Update build" : "Add build"}</button>`;
 
   document.getElementById("saveBuild").onclick = () => {
     const n = val("b_name").trim();
@@ -329,7 +336,9 @@ const DRAFT_FIELD = { posts: "status", builds: "visibility" };
 
 function listOf(kind) {
   const items = state[kind];
-  if (!items.length) return "";
+  if (!items.length) {
+    return `<div class="empty"><p>Nothing here yet.</p><p class="hint">Add one on the left.</p></div>`;
+  }
   const field = DRAFT_FIELD[kind];
   const isPosts = kind === "posts";
 
@@ -352,6 +361,18 @@ function listOf(kind) {
   }).join("") + `</div>`;
 }
 
+// Kept separate from renderForm() — the existing-items list shouldn't be
+// re-rendered (and its scroll position lost) every time the form above it
+// re-renders, and it needs to stay visible while you're mid-edit.
+function renderList() {
+  const panel = document.getElementById("listPanel");
+  if (tab === "site") { panel.style.display = "none"; return; }
+  panel.style.display = "";
+  document.getElementById("listTitle").textContent =
+    tab === "posts" ? "Existing posts" : "Existing builds";
+  document.getElementById("listBody").innerHTML = listOf(tab);
+}
+
 /* Warns when content.js has moved on underneath a saved draft — which is
    what happens if a skill imported or published a post since you last
    used this page. */
@@ -360,7 +381,7 @@ function renderStale() {
   if (!el) return;
   if (!stale) { el.innerHTML = ""; return; }
   el.innerHTML = `
-    <div class="callout" style="border-left-color:var(--stamp-draft);background:#FBF1EC">
+    <div class="callout callout--warn">
       <b>content.js has changed since you last edited here.</b>
       Something else — probably an imported or published post — has been written to the file.
       Exporting your saved draft now would undo it.
@@ -414,6 +435,7 @@ document.querySelectorAll("[data-tab]").forEach(b => {
     document.querySelectorAll("[data-tab]").forEach(x =>
       x.setAttribute("aria-selected", String(x === b)));
     renderForm();
+    renderList();
   };
 });
 
@@ -439,6 +461,7 @@ function render() {
   document.getElementById("out").textContent = serialise();
   renderStale();
   renderForm();
+  renderList();
 }
 
 render();
