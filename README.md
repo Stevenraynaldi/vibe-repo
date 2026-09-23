@@ -53,7 +53,7 @@ Three ways.
 
 **From Obsidian, via the agent** — the main path. Write in `second brain/Mind Palace/Blog`, then ask Claude Code to *draft my note about X*. The `blog-draft` skill converts it, adds it as a draft, and pushes. Read it back on the live site with the preview link it gives you. When you're happy, ask it to *publish the post about X* and the `blog-publish` skill flips it live. Both skills show you what they're about to do and wait for a yes before pushing.
 
-**Using the editor** — go to `yoursite.com/admin.html` (there's a small "Editor" link in the footer of every page), sign in with your Google account, write, set the status, then click *Download content.js*. Replace `content.js` in your repo and commit.
+**Using the editor** — go to `yoursite.com/admin.html` (there's a small "Editor" link in the footer of every page), sign in with your Google account, write, set the status, then click *Save to site*. It commits the updated `content.js` straight to the repo through GitHub's API and Vercel redeploys in about 20 seconds — no download, no replacing files by hand. *Download* is still there if you want a local backup copy, but it's optional now.
 
 **Directly** — open `content.js` in any text editor and add an object to `POSTS` or `BUILDS`. Faster once you're used to it.
 
@@ -63,7 +63,9 @@ Three ways.
 
 Signing in still works locally too, once the login setup below is done and you're pointed at the live site's `/api/auth/verify` — but running the editor purely offline (`python3 -m http.server`) skips the gate entirely, since there's no middleware without Vercel serving the request. That's fine for writing; just remember the login only matters once it's deployed.
 
-It otherwise runs the same as before: entirely client-side, holding your draft in that browser's local storage until you export it, so **export before you clear your browser data or switch machines.** Because the agent skills also write `content.js`, the editor checks whether the file has changed since your last visit and asks which version to keep rather than quietly overwriting the newer one.
+Your draft is still held in that browser's local storage until you click Save, so **save before you clear your browser data or switch machines.** Because the agent skills also write `content.js` — and now so does Save to site, from any browser you're signed into — the editor checks whether the file has changed since your last visit and asks which version to keep rather than quietly overwriting the newer one.
+
+**Save to site needs one more piece**: `api/content/save.js` commits on your behalf using a GitHub token, covered in the setup steps below.
 
 ## Setting up the editor's login
 
@@ -72,12 +74,16 @@ One-time setup, using your own Google Cloud and Vercel accounts — I can't do t
 1. **Google Cloud Console** → APIs & Services → OAuth consent screen → User type **External** → fill in the basics → add your own email as a **test user**. (Testing mode is fine indefinitely for a plain sign-in with no extra scopes — no need to publish the app.)
 2. **Credentials** → Create Credentials → **OAuth client ID** → Application type **Web application** → under Authorized JavaScript origins, add your live Vercel URL (e.g. `https://yoursite.vercel.app`) → Create. Copy the Client ID it gives you (ends in `.apps.googleusercontent.com`).
 3. Paste that Client ID into `login.html`, replacing `YOUR_CLIENT_ID.apps.googleusercontent.com` in the `data-client_id` attribute. This value isn't secret — it identifies the app to Google, the same way it appears in any client-side Google sign-in button — but it does need to match exactly what you set as the env var next.
-4. **Vercel** → your project → Settings → Environment Variables → add three:
+4. **GitHub** → Settings → Developer settings → **Fine-grained tokens** → Generate new token → Repository access: **Only select repositories** → pick just this repo → Permissions → **Contents: Read and write**, nothing else → Generate, and copy the token.
+
+   This one is more sensitive than the three below it — those only control who can sign in, but this token can rewrite your repo. Scoping it to one repo with one permission (as above) means the worst case of it leaking is someone editing this site's content, not your whole GitHub account.
+5. **Vercel** → your project → Settings → Environment Variables → add four:
    - `GOOGLE_CLIENT_ID` — the same Client ID from step 2.
    - `ALLOWED_EMAIL` — the one Google account allowed to sign in as the owner.
    - `SESSION_SECRET` — a long random string, used only to sign the session cookie. Generate one with `openssl rand -base64 32` (or ask the agent to generate one — it's just randomness, not tied to any account).
-5. Redeploy (env var changes don't apply to a deployment already running — an empty commit or the Redeploy button in Vercel both work).
-6. Visit `/admin.html`. You should land on `/login.html`; sign in with the allowed account and you should land back in the editor. Any other Google account gets turned away with a 403.
+   - `GITHUB_TOKEN` — the token from step 4.
+6. Redeploy (env var changes don't apply to a deployment already running — an empty commit or the Redeploy button in Vercel both work).
+7. Visit `/admin.html`. You should land on `/login.html`; sign in with the allowed account and you should land back in the editor. Any other Google account gets turned away with a 403. Try editing something and clicking **Save to site** — check GitHub for the new commit, then the live site once Vercel redeploys.
 
 This is personal-blog-grade protection — real, but not enterprise SSO. No device management, no audit log, a 14-day session (change `SESSION_MAX_AGE` in `api/auth/verify.js` if you want shorter). Reasonable for a single-owner site.
 

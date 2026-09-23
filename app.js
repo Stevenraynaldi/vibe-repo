@@ -196,13 +196,48 @@ function previewExitHref() {
   return u.href;
 }
 
+/* ---------- light/dark theme ----------
+   Follows the OS by default (see the @media block in styles.css). A click
+   on the toggle stores an explicit choice that overrides the OS either way,
+   until clicked again. The <head> of every page also runs a tiny inline
+   script that applies a stored choice before first paint — without it,
+   this file (loaded at the end of <body>) would apply it too late and a
+   returning visitor would see a flash of the wrong theme.
+   -------------------------------------------------------------------- */
+
+const THEME_KEY = "whitepaper-theme";
+
+function currentTheme() {
+  let stored = null;
+  try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+  if (stored === "light" || stored === "dark") return stored;
+  return (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches)
+    ? "dark" : "light";
+}
+
+function setTheme(theme) {
+  try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+  document.documentElement.setAttribute("data-theme", theme);
+}
+
+function toggleTheme() {
+  setTheme(currentTheme() === "dark" ? "light" : "dark");
+  renderThemeToggle();
+}
+
+function renderThemeToggle() {
+  const btn = document.getElementById("themeToggle");
+  if (!btn) return;
+  const dark = currentTheme() === "dark";
+  btn.textContent = dark ? "☀" : "☾";
+  btn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+}
+
 /* ---------- shared chrome ---------- */
 
 function mountChrome(current) {
   const head = document.getElementById("masthead");
   if (head) {
-    // The Editor is deliberately absent from the nav — it isn't deployed.
-    // Open admin.html locally when you want it.
     const bar = previewMode()
       ? `<div class="previewbar">
            <span><b>Preview</b> — drafts are visible on this device only</span>
@@ -215,8 +250,16 @@ function mountChrome(current) {
         <nav class="nav">
           <a href="index.html" ${current === "writing" ? 'aria-current="page"' : ""}>Writing</a>
           <a href="builds.html" ${current === "builds" ? 'aria-current="page"' : ""}>Builds</a>
+          <button class="theme-toggle" id="themeToggle" type="button"></button>
         </nav>
       </div>`;
+    document.getElementById("themeToggle").onclick = toggleTheme;
+    renderThemeToggle();
+    // Keep the icon honest if the OS theme changes while no explicit
+    // choice has been made (CSS already reacts to this on its own).
+    if (window.matchMedia) {
+      matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderThemeToggle);
+    }
   }
 
   const foot = document.getElementById("foot");
