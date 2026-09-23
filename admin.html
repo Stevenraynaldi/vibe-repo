@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<script>try{var t=localStorage.getItem("whitepaper-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 <title>Editor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,8 +18,9 @@
 <main class="wrap">
   <section class="intro" style="padding:52px 0 30px">
     <p class="eyebrow">Editor</p>
-    <h1>Write, then export</h1>
-    <p>Edit here, download the updated <code>content.js</code>, and replace the file in your repo. Your work is kept in this browser until you export it.</p>
+    <h1>Write, then save</h1>
+    <p>Edit here and click <b>Save to site</b> — it commits <code>content.js</code> straight to the repo and Vercel
+    redeploys in about 20 seconds. Your work is kept in this browser until you save it.</p>
   </section>
 
   <div class="admin">
@@ -30,8 +32,7 @@
       <br><br>
       <b>Publishing.</b> New posts and builds start as <b>drafts</b> — hidden from the site, and invisible unless
       you add <code>?preview=1</code> to the URL. Flip one live with <b>Publish</b> below, then click
-      <b>Download content.js</b>, replace the file in your repo, and commit. Or skip all that and ask the agent:
-      <i>publish the post about X</i>.
+      <b>Save to site</b>. Or skip the UI and ask the agent: <i>publish the post about X</i>.
       <br><br>
       A draft is hidden, not secret — its text still ships inside the public <code>content.js</code>. The login
       protects who can use this page, not what's in that file.
@@ -61,9 +62,10 @@
       <div class="panel">
         <div class="panel__bar">
           <span>content.js</span>
-          <span style="display:flex;gap:6px">
+          <span style="display:flex;gap:6px;align-items:center">
             <button class="mini" id="copyOut">Copy</button>
-            <button class="mini" id="downloadOut">Download content.js</button>
+            <button class="mini" id="downloadOut">Download</button>
+            <button class="mini mini--primary" id="saveToSite">Save to site</button>
           </span>
         </div>
         <div class="panel__body">
@@ -454,7 +456,33 @@ document.getElementById("downloadOut").onclick = () => {
   a.download = "content.js";
   a.click();
   URL.revokeObjectURL(a.href);
-  toast("Downloaded — now replace content.js in your repo");
+  toast("Downloaded — a local backup, not needed for Save to site");
+};
+
+document.getElementById("saveToSite").onclick = async () => {
+  const btn = document.getElementById("saveToSite");
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  try {
+    const res = await fetch("/api/content/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: serialise() })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      toast("Saved — live in about 20s");
+    } else if (res.status === 401) {
+      toast("Session expired — sign in again");
+    } else {
+      toast(data.error || `Save failed (${res.status})`);
+    }
+  } catch (e) {
+    toast("Network error — couldn't reach the save endpoint");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save to site";
+  }
 };
 
 function render() {

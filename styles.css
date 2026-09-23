@@ -35,8 +35,12 @@
   --gutter: 24px;
 }
 
+/* Dark values apply when the OS prefers dark AND there's no explicit
+   override (data-theme="light" wins over the OS), or when data-theme is
+   explicitly "dark" regardless of what the OS prefers. Same variable list
+   in both blocks — the click-to-override toggle in app.js sets data-theme. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper:        #17181A;
     --paper-rgb:    23, 24, 26;
     --paper-2:      #1E2023;
@@ -57,8 +61,37 @@
     --stamp-proto:  #D69A3D;
     --stamp-arch:   #9BA0A8;
     --stamp-draft:  #E07750;
+
+    color-scheme: dark;
   }
 }
+
+:root[data-theme="dark"] {
+  --paper:        #17181A;
+  --paper-rgb:    23, 24, 26;
+  --paper-2:      #1E2023;
+  --ink:          #EDEDE9;
+  --ink-2:        #A9ADB3;
+  --ink-3:        #797D84;
+  --rule:         #2A2C30;
+  --rule-strong:  #3C3F44;
+  --accent:       #6E9EEA;
+  --accent-soft:  #1B2A42;
+  --accent-ink:   #BFD4F5;
+  --accent-hover: #8FB4EF;
+  --code-bg:      #1D1F22;
+  --warn-soft:    #2E2119;
+  --grid-line:    rgba(255, 255, 255, 0.045);
+
+  --stamp-live:   #3FB37E;
+  --stamp-proto:  #D69A3D;
+  --stamp-arch:   #9BA0A8;
+  --stamp-draft:  #E07750;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -146,6 +179,18 @@ img { max-width: 100%; height: auto; display: block; }
   font-weight: 550;
   box-shadow: inset 0 -6px 0 var(--accent-soft);
 }
+
+.theme-toggle {
+  align-self: center;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.theme-toggle:hover { color: var(--ink); }
 
 /* ---------- Page intro ---------- */
 
@@ -746,6 +791,9 @@ img { max-width: 100%; height: auto; display: block; }
   color: var(--ink-2);
 }
 .mini:hover { color: var(--ink); border-color: var(--ink-3); }
+.mini--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mini--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+.mini:disabled { opacity: 0.6; cursor: default; }
 
 .output {
   font-family: var(--mono);
