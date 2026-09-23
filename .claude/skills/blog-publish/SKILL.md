@@ -1,29 +1,37 @@
 ---
 name: blog-publish
-description: Publish a hidden draft on the site, or take a published post back to draft. Use when the user says things like "publish the post about X", "make that draft live", "ship it", "unpublish that post", or "take X down".
+description: Publish a private draft on the site, or take a published post back to draft. Use when the user says things like "publish the post about X", "make that draft live", "ship it", "unpublish that post", or "take X down".
 ---
 
-# Publish a draft
+# Publish (or unpublish) a post
 
-Flips a post's `status` in `content.js` between `"draft"` and `"published"`,
-then commits and pushes. Vercel redeploys in about 20 seconds.
+Flips a post's `status` between `"draft"` and `"published"` through the site's
+admin API. The change is live on the next page load — no commit, no redeploy.
 
 **Site repo:** `C:\Users\steve\Haribo Mix\vibe repo`
 
+Credentials come from `.env.local` at the repo root (`SITE_URL`,
+`ADMIN_API_KEY`) — see the `blog-draft` skill, step 0. Load them in the same
+shell command as each request and never print the key.
+
 ## 1. Find the post
 
-Read `POSTS` in `content.js`.
+```bash
+set -a; . ./.env.local; set +a; curl -sS "$SITE_URL/api/content?drafts=1" -H "Authorization: Bearer $ADMIN_API_KEY"
+```
 
-- Publishing: consider entries with `status: "draft"`.
-- Unpublishing: consider everything else. **A post with no `status` field is
-  published** — that's the back-compatible default the whole site relies on, so
-  don't treat a missing status as a draft.
+The response is `{ site, posts, builds }`.
+
+- Publishing: consider posts with `status: "draft"`.
+- Unpublishing: consider posts with `status: "published"`.
 
 Match the user's description against titles and ids. If there's exactly one
 draft and they said "publish it", that's the one. If it's ambiguous, list the
 candidates with their dates and ask — don't guess, publishing is public.
 
 ## 2. Make the change
+
+Start from the post exactly as the API returned it.
 
 **Publishing:**
 
@@ -38,34 +46,30 @@ candidates with their dates and ask — don't guess, publishing is public.
 - Leave `date` alone.
 
 Change nothing else — not the body, not the dek, not the tags. If the user wants
-edits too, make those edits explicitly and show them.
+edits too, make those explicitly and show them.
 
-Check the file still parses:
-
-```bash
-node --check content.js
-```
-
-## 3. Confirm, then push
+## 3. Confirm, then save
 
 Show the title, the old and new status, and the date you're stamping.
-**Ask before committing** — this makes writing public immediately.
+**Ask before saving** — publishing makes writing public immediately.
 
-On approval:
+On approval, write the full post object (with its `id`) as JSON to a file in
+your scratchpad and POST it:
 
 ```bash
-git add content.js && git commit && git push
+set -a; . ./.env.local; set +a; curl -sS -X POST "$SITE_URL/api/admin/posts" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" --data-binary @"<scratchpad>/post.json"
 ```
 
-Commit message: `Publish: <title>` or `Unpublish: <title>`.
+The response is `{ "post": { ... } }`, or `{ "error": "..." }` — show the error
+if there is one.
 
-Report the live URL — `<SITE.url>/post.html?id=<id>` if `SITE.url` is set,
-otherwise the path — and note the ~20 second redeploy. For a publish, the post
-now also appears on the writing index at `/`.
+Report the live URL — `$SITE_URL/post.html?id=<id>`. After a publish the post
+also appears on the writing index at `/`; after an unpublish it disappears from
+public view immediately.
 
 ## Note
 
 There's no reverse sync back to Obsidian. If the user edits the note in Obsidian
 after publishing, they re-run `blog-draft` — it matches on `id` and updates the
-existing post in place, though it will leave `status` as it found it rather than
-knocking a live post back to draft.
+existing post in place, keeping its current status rather than knocking a live
+post back to draft.

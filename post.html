@@ -23,16 +23,14 @@
 
 <footer id="foot"></footer>
 
-<script src="content.js"></script>
 <script src="app.js"></script>
 <script>
-  mountChrome("writing");
-
+startPage("writing", () => {
   const id = new URLSearchParams(location.search).get("id");
   const found = POSTS.find(p => p.id === id);
 
-  // Outside preview a draft is treated as missing, so the URL gives
-  // nothing away — not even the title.
+  // The API only returns drafts to the signed-in owner; outside preview,
+  // treat one as missing too.
   const post = (found && isDraft(found) && !previewMode()) ? null : found;
   const root = document.getElementById("article");
 
@@ -77,9 +75,8 @@
 
     const draftNote = isDraft(post)
       ? `<div class="callout" style="margin-bottom:26px">
-           <b>This is a draft.</b> It's hidden from the writing index and
-           won't be indexed by search engines. Publish it from the Editor,
-           or ask the agent to publish it.
+           <b>This is a draft.</b> Only you can see it, because you're signed
+           in. Publish it from the Editor, or ask the agent to publish it.
          </div>`
       : "";
 
@@ -104,6 +101,7 @@
         .catch(() => toast("Couldn't copy — select the address bar instead"));
     });
   }
+});
 </script>
 </body>
 </html>

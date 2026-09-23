@@ -1,2 +1,4 @@
 node_modules/
 .vercel/
+# Local secrets — ADMIN_API_KEY for the Obsidian skills, or `vercel env pull` output
+.env*.local

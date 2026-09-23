@@ -15,190 +15,96 @@
 
 <header class="masthead" id="masthead"></header>
 
-<main class="wrap">
-  <section class="intro" style="padding:52px 0 30px">
-    <p class="eyebrow">Editor</p>
-    <h1>Write, then save</h1>
-    <p>Edit here and click <b>Save to site</b> — it commits <code>content.js</code> straight to the repo and Vercel
-    redeploys in about 20 seconds. Your work is kept in this browser until you save it.</p>
+<main class="wrap admin">
+  <section class="admin-head">
+    <div>
+      <p class="eyebrow">Editor</p>
+      <h1>Manage your site</h1>
+    </div>
+    <nav class="admin-head__links">
+      <a href="index.html" target="_blank" rel="noopener">View site ↗</a>
+      <a href="/api/auth/logout">Log out</a>
+    </nav>
   </section>
 
-  <div class="admin">
-    <div class="callout">
-      <b>This page is gated.</b> A small serverless function checks that you signed in with the site owner's
-      Google account before this page is even served — see <code>middleware.js</code> and
-      <code>README.md</code> if you're setting that up for the first time.
-      <a href="/api/auth/logout" style="float:right">Log out</a>
-      <br><br>
-      <b>Publishing.</b> New posts and builds start as <b>drafts</b> — hidden from the site, and invisible unless
-      you add <code>?preview=1</code> to the URL. Flip one live with <b>Publish</b> below, then click
-      <b>Save to site</b>. Or skip the UI and ask the agent: <i>publish the post about X</i>.
-      <br><br>
-      A draft is hidden, not secret — its text still ships inside the public <code>content.js</code>. The login
-      protects who can use this page, not what's in that file.
-    </div>
-
-    <div id="staleWarn"></div>
-
-    <div class="tabs" role="tablist">
-      <button role="tab" aria-selected="true"  data-tab="posts">Posts</button>
-      <button role="tab" aria-selected="false" data-tab="builds">Builds</button>
-      <button role="tab" aria-selected="false" data-tab="site">Site details</button>
-    </div>
-
-    <div class="admin-cols">
-      <div class="admin-col">
-        <div class="panel">
-          <div class="panel__bar"><span id="formTitle">New post</span><button class="mini" id="clearForm">Clear</button></div>
-          <div class="panel__body" id="formBody"></div>
-        </div>
-
-        <div class="panel" id="listPanel">
-          <div class="panel__bar"><span id="listTitle">Existing posts</span></div>
-          <div class="panel__body" id="listBody"></div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel__bar">
-          <span>content.js</span>
-          <span style="display:flex;gap:6px;align-items:center">
-            <button class="mini" id="copyOut">Copy</button>
-            <button class="mini" id="downloadOut">Download</button>
-            <button class="mini mini--primary" id="saveToSite">Save to site</button>
-          </span>
-        </div>
-        <div class="panel__body">
-          <pre class="output" id="out"></pre>
-        </div>
-      </div>
-    </div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="posts">Posts</button>
+    <button role="tab" aria-selected="false" data-tab="builds">Builds</button>
+    <button role="tab" aria-selected="false" data-tab="site">Site</button>
   </div>
+
+  <div id="view"><p class="note">Loading…</p></div>
 </main>
 
 <footer id="foot"></footer>
 
-<script src="content.js"></script>
+<input type="file" id="imageInput" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" hidden>
+
 <script src="app.js"></script>
 <script>
-mountChrome("admin");
-document.title = "Editor — " + SITE.name;
+/* Every button that saves writes straight to the database through the
+   /api/admin/* routes, so a save is live on the next page load. Nothing is
+   held back in the browser — the unsaved-changes guard is what stops you
+   losing work. */
 
-/* ---------- state ---------- */
-
-const KEY = "whitepaper-draft-v2";
-
-const fromFile = () => ({ site: { ...SITE }, posts: [...POSTS], builds: [...BUILDS] });
-
-/* A fingerprint of content.js as it was when this draft started.
-   content.js can also be written by the blog-draft / blog-publish skills,
-   and this editor prefers its own saved copy — so without this check an
-   imported draft would be silently wiped the next time you exported. */
-const fingerprint = s => JSON.stringify([s.site, s.posts, s.builds]);
-const FILE_FP = fingerprint(fromFile());
-
-let state = fromFile();
-let stale = false;
-let base = FILE_FP;
-
-try {
-  const saved = JSON.parse(localStorage.getItem(KEY) || "null");
-  if (saved && saved.state) {
-    state = saved.state;
-    base = saved.base;
-    stale = saved.base !== FILE_FP;
-  }
-} catch (e) { /* storage unavailable — carry on in memory */ }
-
-/* The warning survives reloads until you resolve it one way or the other,
-   so it can't be lost by carrying on editing. */
-function save() {
-  try { localStorage.setItem(KEY, JSON.stringify({ base: stale ? base : FILE_FP, state })); } catch (e) {}
-  render();
-}
-
-function resolveStale(takeFile) {
-  if (takeFile) state = fromFile();
-  stale = false;
-  base = FILE_FP;
-  save();
-  toast(takeFile ? "Loaded from content.js" : "Kept your local draft");
-}
-
-let tab = "posts";
-let editing = null; // index being edited, or null for new
-
-/* ---------- serialiser ---------- */
-
-const str = s => JSON.stringify(String(s ?? ""));
-const arr = a => "[" + (a || []).map(x => JSON.stringify(x)).join(", ") + "]";
-const tpl = s => "`" + String(s ?? "")
-  .replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${") + "`";
-
-function serialise() {
-  const s = state.site;
-  const posts = state.posts.map(p => `  {
-    id: ${str(p.id)},
-    title: ${str(p.title)},
-    dek: ${str(p.dek)},
-    date: ${str(p.date)},
-    status: ${str(p.status || "published")},
-    tags: ${arr(p.tags)},
-    verified: ${str(p.verified)},
-    deps: ${str(p.deps)},
-    body: ${tpl(p.body)}
-  }`).join(",\n");
-
-  const builds = state.builds.map(b => `  {
-    id: ${str(b.id)},
-    name: ${str(b.name)},
-    pitch: ${str(b.pitch)},
-    status: ${str(b.status)},
-    visibility: ${str(b.visibility || "published")},
-    stack: ${arr(b.stack)},
-    year: ${str(b.year)},
-    repo: ${str(b.repo)},
-    demo: ${str(b.demo)},
-    detail: ${tpl(b.detail)},
-    tools: ${arr(b.tools)},
-    config: ${tpl(b.config)}
-  }`).join(",\n");
-
-  return `/* Generated by the Editor — ${new Date().toISOString().slice(0, 10)} */
-
-const SITE = {
-  name: ${str(s.name)},
-  role: ${str(s.role)},
-  writingIntro: ${str(s.writingIntro)},
-  buildsIntro: ${str(s.buildsIntro)},
-  linkedin: ${str(s.linkedin)},
-  github: ${str(s.github)},
-  email: ${str(s.email)},
-  url: ${str(s.url)}
+const KINDS = {
+  posts:  { one: "post",  Many: "Posts",  draftField: "status",     endpoint: "/api/admin/posts",  key: "post",
+            label: it => it.title, meta: it => fmtDate(it.date), previewHref: it => `post.html?id=${encodeURIComponent(it.id)}&preview=1` },
+  builds: { one: "build", Many: "Builds", draftField: "visibility", endpoint: "/api/admin/builds", key: "build",
+            label: it => it.name, meta: it => [it.status, it.year].filter(Boolean).join(" · "), previewHref: () => "builds.html?preview=1" }
 };
 
-const POSTS = [
-${posts}
-];
+let tab = "posts";
+let editing = null;       // { kind, item, isNew } while an edit view is open
+let dirty = false;        // unsaved edits in the open form
+let busy = false;
+let EMPTY = false;        // the database has no content at all yet
+let startedEmpty = false; // chose "Start empty" on the first-run screen
 
-const BUILDS = [
-${builds}
-];
-`;
+const $ = id => document.getElementById(id);
+const itemsOf = kind => (kind === "posts" ? POSTS : BUILDS);
+const isDraftItem = (kind, it) => it[KINDS[kind].draftField] !== "published";
+
+/* ---------- talking to the API ---------- */
+
+async function api(method, url, body) {
+  const isFile = body instanceof Blob;
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? {} : { "Content-Type": isFile ? body.type : "application/json" },
+    body: body === undefined ? undefined : isFile ? body : JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({}));
+  // Don't redirect on 401 — that would throw away whatever you were writing.
+  if (res.status === 401) throw new Error("You've been signed out. Sign in again in a new tab, then save again.");
+  if (!res.ok) throw new Error(data.error || `Something went wrong (${res.status}).`);
+  return data;
 }
 
-/* ---------- forms ---------- */
+async function loadAll() {
+  const res = await fetch("/api/content?drafts=1", { cache: "no-store" });
+  if (res.status === 401) { location.href = "login.html"; return false; }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    $("view").innerHTML = `<div class="empty"><p>Couldn't load your content.</p>
+      <p class="hint">${esc(data.error || `Error ${res.status}`)}</p></div>`;
+    return false;
+  }
+  SITE = { ...SITE, ...data.site };
+  POSTS = data.posts || [];
+  BUILDS = data.builds || [];
+  EMPTY = !!data.empty;
+  return true;
+}
 
-const slug = t => String(t || "").toLowerCase().trim()
-  .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-
-const csv = v => String(v || "").split(",").map(x => x.trim()).filter(Boolean);
+/* ---------- small helpers ---------- */
 
 function field(label, id, value, opts = {}) {
   const note = opts.note ? `<p class="note">${opts.note}</p>` : "";
+  const attrs = opts.required ? " required" : "";
   if (opts.area) {
     return `<div class="field"><label for="${id}">${label}</label>
-      <textarea id="${id}" rows="${opts.rows || 4}">${esc(value || "")}</textarea>${note}</div>`;
+      <textarea id="${id}" rows="${opts.rows || 4}"${attrs}>${esc(value || "")}</textarea>${note}</div>`;
   }
   if (opts.select) {
     return `<div class="field"><label for="${id}">${label}</label><select id="${id}">
@@ -206,293 +112,470 @@ function field(label, id, value, opts = {}) {
     </select>${note}</div>`;
   }
   return `<div class="field"><label for="${id}">${label}</label>
-    <input id="${id}" type="${opts.type || "text"}" value="${esc(value || "")}" placeholder="${opts.ph || ""}">${note}</div>`;
+    <input id="${id}" type="${opts.type || "text"}" value="${esc(value || "")}" placeholder="${esc(opts.ph || "")}"${attrs}>${note}</div>`;
 }
 
-const val = id => (document.getElementById(id) || {}).value || "";
+const val = id => ($(id) || {}).value || "";
 
-function renderForm() {
-  const body = document.getElementById("formBody");
-  const title = document.getElementById("formTitle");
-
-  if (tab === "site") {
-    title.textContent = "Site details";
-    const s = state.site;
-    body.innerHTML =
-      field("Your name", "f_name", s.name) +
-      field("One-line role", "f_role", s.role, { note: "Shown next to your name in the header." }) +
-      field("Writing page intro", "f_wi", s.writingIntro, { area: true, rows: 2 }) +
-      field("Builds page intro", "f_bi", s.buildsIntro, { area: true, rows: 2 }) +
-      field("LinkedIn URL", "f_li", s.linkedin) +
-      field("GitHub URL", "f_gh", s.github) +
-      field("Email", "f_em", s.email) +
-      field("Live site URL", "f_url", s.url, { ph: "https://yoursite.vercel.app",
-        note: "No trailing slash. Only used to build preview links — optional." }) +
-      `<button class="btn btn--primary" id="saveSite">Save site details</button>` +
-      `<p class="note">This only updates the preview on the right — like posts and builds, nothing on the
-       live site changes until you download content.js, replace it in your repo, and commit.</p>`;
-
-    document.getElementById("saveSite").onclick = () => {
-      state.site = {
-        name: val("f_name"), role: val("f_role"),
-        writingIntro: val("f_wi"), buildsIntro: val("f_bi"),
-        linkedin: val("f_li"), github: val("f_gh"), email: val("f_em"),
-        url: val("f_url")
-      };
-      save();
-      toast("Saved here — download content.js and commit to make it live");
-    };
-    return;
-  }
-
-  if (tab === "posts") {
-    const p = editing !== null ? state.posts[editing] : {};
-    title.textContent = editing !== null ? "Editing post" : "New post";
-    body.innerHTML =
-      field("Title", "p_title", p.title, { ph: "What you're writing about" }) +
-      field("Summary line", "p_dek", p.dek, { note: "One sentence. Shows on the index and in link previews." }) +
-      `<div class="row">` +
-        field("Date", "p_date", p.date || new Date().toISOString().slice(0, 10), { type: "date" }) +
-        field("Status", "p_status", p.status || (editing !== null ? "published" : "draft"),
-          { select: ["draft", "published"],
-            note: "Drafts are hidden from the site. Read one live with ?preview=1." }) +
-      `</div>` +
-      `<div class="row">` +
-        field("Tags", "p_tags", (p.tags || []).join(", "), { ph: "Agents, Python" }) +
-        field("Verified on", "p_ver", p.verified, { type: "date" }) +
-      `</div>` +
-      field("Versions", "p_deps", p.deps, { ph: "crewai==1.15.10, Python 3.12" }) +
-      field("Body", "p_body", p.body, { area: true, rows: 16,
-        note: "Markdown. Use ## for sections (3+ builds a contents list), ``` for code, ![caption](images/file.png) for images." }) +
-      `<button class="btn btn--primary" id="savePost">${editing !== null ? "Update post" : "Add post"}</button>`;
-
-    document.getElementById("savePost").onclick = () => {
-      const t = val("p_title").trim();
-      if (!t) return toast("Give the post a title first");
-      const item = {
-        id: (editing !== null && state.posts[editing].id) || slug(t),
-        title: t, dek: val("p_dek"), date: val("p_date"),
-        status: val("p_status") || "draft",
-        tags: csv(val("p_tags")), verified: val("p_ver"),
-        deps: val("p_deps"), body: val("p_body")
-      };
-      const wasEditing = editing !== null;
-      if (wasEditing) state.posts[editing] = item;
-      else state.posts.unshift(item);
-      editing = null;
-      save();
-      toast(wasEditing
-        ? "Post updated"
-        : (item.status === "draft" ? "Draft added" : "Post added"));
-    };
-    return;
-  }
-
-  const b = editing !== null ? state.builds[editing] : {};
-  title.textContent = editing !== null ? "Editing build" : "New build";
-  body.innerHTML =
-    field("Name", "b_name", b.name, { ph: "Market Research MCP" }) +
-    field("One-line pitch", "b_pitch", b.pitch, { note: "What it does, in plain words. Shows on the card." }) +
-    `<div class="row">` +
-      field("Status", "b_status", b.status || "prototype", { select: ["prototype", "live", "archived"],
-        note: "How finished it is — shown on the card." }) +
-      field("Visibility", "b_vis", b.visibility || (editing !== null ? "published" : "draft"),
-        { select: ["draft", "published"], note: "Drafts are hidden from the Builds page." }) +
-    `</div>` +
-    field("Year", "b_year", b.year || String(new Date().getFullYear())) +
-    field("Stack", "b_stack", (b.stack || []).join(", "), { ph: "TypeScript, MCP" }) +
-    `<div class="row">` +
-      field("Repository URL", "b_repo", b.repo) +
-      field("Demo URL", "b_demo", b.demo) +
-    `</div>` +
-    field("Details", "b_detail", b.detail, { area: true, rows: 7, note: "Markdown. Shows inside the pop-up." }) +
-    field("Tool names", "b_tools", (b.tools || []).join(", "), { ph: "get_quote, get_filings", note: "For MCP servers. Leave blank otherwise." }) +
-    field("Install config", "b_config", b.config, { area: true, rows: 7, note: "Pasted into the pop-up with a copy button. Great for MCP JSON." }) +
-    `<button class="btn btn--primary" id="saveBuild">${editing !== null ? "Update build" : "Add build"}</button>`;
-
-  document.getElementById("saveBuild").onclick = () => {
-    const n = val("b_name").trim();
-    if (!n) return toast("Give the build a name first");
-    const item = {
-      id: (editing !== null && state.builds[editing].id) || slug(n),
-      name: n, pitch: val("b_pitch"), status: val("b_status"),
-      visibility: val("b_vis") || "draft",
-      stack: csv(val("b_stack")), year: val("b_year"),
-      repo: val("b_repo"), demo: val("b_demo"),
-      detail: val("b_detail"), tools: csv(val("b_tools")), config: val("b_config")
-    };
-    const wasEditing = editing !== null;
-    if (wasEditing) state.builds[editing] = item;
-    else state.builds.unshift(item);
-    editing = null;
-    save();
-    toast(wasEditing
-      ? "Build updated"
-      : (item.visibility === "draft" ? "Draft build added" : "Build added"));
-  };
-}
-
-// Posts track draft/published on `status`; builds keep `status` for
-// prototype/live/archived, so their draft/published flag is `visibility`.
-const DRAFT_FIELD = { posts: "status", builds: "visibility" };
-
-function listOf(kind) {
-  const items = state[kind];
-  if (!items.length) {
-    return `<div class="empty"><p>Nothing here yet.</p><p class="hint">Add one on the left.</p></div>`;
-  }
-  const field = DRAFT_FIELD[kind];
-  const isPosts = kind === "posts";
-
-  return `<div class="list">` + items.map((it, i) => {
-    const draft = it[field] === "draft";
-    const meta = `<span class="stamp stamp--${draft ? "draft" : "live"}">${draft ? "draft" : "live"}</span>` +
-      (isPosts ? `<span>${esc(it.date || "")}</span>` : `<span>${esc(it.status || "")}</span>`);
-
-    return `
-    <div class="list__item">
-      <div>${esc(it.title || it.name)} ${meta}</div>
-      <div style="display:flex;gap:6px">
-        <button class="mini" data-act="toggle" data-kind="${kind}" data-i="${i}">${
-          draft ? "Publish" : "Unpublish"}</button>
-        <button class="mini" data-act="edit" data-kind="${kind}" data-i="${i}">Edit</button>
-        <button class="mini" data-act="del" data-kind="${kind}" data-i="${i}">Delete</button>
-        <button class="mini" data-act="up" data-kind="${kind}" data-i="${i}">↑</button>
-      </div>
-    </div>`;
-  }).join("") + `</div>`;
-}
-
-// Kept separate from renderForm() — the existing-items list shouldn't be
-// re-rendered (and its scroll position lost) every time the form above it
-// re-renders, and it needs to stay visible while you're mid-edit.
-function renderList() {
-  const panel = document.getElementById("listPanel");
-  if (tab === "site") { panel.style.display = "none"; return; }
-  panel.style.display = "";
-  document.getElementById("listTitle").textContent =
-    tab === "posts" ? "Existing posts" : "Existing builds";
-  document.getElementById("listBody").innerHTML = listOf(tab);
-}
-
-/* Warns when content.js has moved on underneath a saved draft — which is
-   what happens if a skill imported or published a post since you last
-   used this page. */
-function renderStale() {
-  const el = document.getElementById("staleWarn");
+function setStatus(text, isError = false) {
+  const el = $("editorStatus");
   if (!el) return;
-  if (!stale) { el.innerHTML = ""; return; }
-  el.innerHTML = `
-    <div class="callout callout--warn">
-      <b>content.js has changed since you last edited here.</b>
-      Something else — probably an imported or published post — has been written to the file.
-      Exporting your saved draft now would undo it.
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <button class="mini" id="takeFile">Load from content.js</button>
-        <button class="mini" id="takeDraft">Keep my draft</button>
+  el.textContent = text;
+  el.classList.toggle("is-error", isError);
+}
+
+function confirmLeave() {
+  return !dirty || confirm("You have unsaved changes. Leave without saving?");
+}
+
+window.addEventListener("beforeunload", e => {
+  if (dirty) { e.preventDefault(); e.returnValue = ""; }
+});
+
+/* ---------- rendering ---------- */
+
+function render() {
+  document.querySelectorAll("[data-tab]").forEach(b =>
+    b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  if (EMPTY && !startedEmpty) return renderFirstRun();
+  if (tab === "site") return renderSite();
+  if (editing) return renderEditor();
+  renderList(tab);
+}
+
+function renderFirstRun() {
+  $("view").innerHTML = `
+    <div class="empty">
+      <p>Your site doesn't have any content yet.</p>
+      <p class="hint">Start from the example posts and builds (edit or delete them later), or begin blank.</p>
+      <div class="actions" style="justify-content:center">
+        <button class="btn btn--primary" data-action="importSeed">Import starter content</button>
+        <button class="btn" data-action="startEmpty">Start empty</button>
       </div>
     </div>`;
-  document.getElementById("takeFile").onclick = () => resolveStale(true);
-  document.getElementById("takeDraft").onclick = () => resolveStale(false);
 }
+
+function renderList(kind) {
+  const k = KINDS[kind];
+  const items = itemsOf(kind);
+  const rows = items.map((it, i) => {
+    const draft = isDraftItem(kind, it);
+    const order = kind === "builds" ? `
+      <span class="cms-row__order">
+        <button class="mini" data-move="-1" data-i="${i}" aria-label="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
+        <button class="mini" data-move="1" data-i="${i}" aria-label="Move down" ${i === items.length - 1 ? "disabled" : ""}>↓</button>
+      </span>` : "";
+    return `
+      <li class="cms-row">
+        <button class="cms-row__main" data-edit="${i}">
+          <span class="cms-row__title">${esc(k.label(it) || "Untitled")}</span>
+          <span class="cms-row__meta">
+            <span class="stamp stamp--${draft ? "draft" : "live"}">${draft ? "draft" : "live"}</span>
+            ${esc(k.meta(it) || "")}
+          </span>
+        </button>${order}
+      </li>`;
+  }).join("");
+
+  $("view").innerHTML = `
+    <div class="cms-bar">
+      <h2 class="cms-title">${k.Many}<span>${items.length}</span></h2>
+      <button class="btn btn--primary" data-action="new">New ${k.one}</button>
+    </div>
+    ${items.length
+      ? `<ul class="cms-list">${rows}</ul>`
+      : `<div class="empty"><p>No ${k.one}s yet.</p><p class="hint">Click “New ${k.one}” to add one.</p></div>`}`;
+}
+
+function imageTools(textareaId) {
+  return `
+    <div class="editor-tools">
+      <button class="mini" type="button" data-action="image" data-target="${textareaId}">Insert image</button>
+      <span class="note" style="margin:0">…or drop / paste one into the text. Text inside the [ ] becomes its caption.</span>
+    </div>`;
+}
+
+function renderEditor() {
+  const { kind, item, isNew } = editing;
+  const k = KINDS[kind];
+  let form;
+
+  if (kind === "posts") {
+    form =
+      field("Title", "f_title", item.title, { required: true, ph: "What you're writing about" }) +
+      field("Summary line", "f_dek", item.dek, { note: "One sentence. Shows on the writing index and in link previews." }) +
+      `<div class="row">` +
+        field("Date", "f_date", item.date || new Date().toISOString().slice(0, 10), { type: "date" }) +
+        field("Tags", "f_tags", (item.tags || []).join(", "), { ph: "Agents, Notes" }) +
+      `</div>` +
+      `<div class="field"><label for="f_body">Body</label>${imageTools("f_body")}
+        <textarea id="f_body" rows="20" data-droppable>${esc(item.body || "")}</textarea>
+        <p class="note">Markdown: ## heading, **bold**, *italic*, [link](url), \`code\`, - lists, &gt; quotes. Three or more ## headings add a contents list.</p></div>` +
+      `<details class="more"${item.verified || item.deps ? " open" : ""}><summary>Technical details</summary>` +
+        `<div class="row">` +
+          field("Verified on", "f_verified", item.verified, { type: "date" }) +
+          field("Versions", "f_deps", item.deps, { ph: "crewai==1.15.10, Python 3.12" }) +
+        `</div>` +
+      `</details>`;
+  } else {
+    form =
+      field("Name", "f_name", item.name, { required: true, ph: "Market Research MCP" }) +
+      field("One-line pitch", "f_pitch", item.pitch, { note: "What it does, in plain words. Shows on the card." }) +
+      `<div class="row">` +
+        field("Status", "f_status", item.status || "prototype", { select: ["prototype", "live", "archived"],
+          note: "How finished it is — shown on the card." }) +
+        field("Year", "f_year", item.year || String(new Date().getFullYear())) +
+      `</div>` +
+      field("Stack", "f_stack", (item.stack || []).join(", "), { ph: "TypeScript, MCP" }) +
+      `<div class="row">` +
+        field("Repository URL", "f_repo", item.repo, { ph: "https://github.com/…" }) +
+        field("Demo URL", "f_demo", item.demo, { ph: "https://…" }) +
+      `</div>` +
+      `<div class="field"><label for="f_detail">Details</label>${imageTools("f_detail")}
+        <textarea id="f_detail" rows="10" data-droppable>${esc(item.detail || "")}</textarea>
+        <p class="note">Markdown. Shows inside the build's pop-up.</p></div>` +
+      field("Tool names", "f_tools", (item.tools || []).join(", "), { ph: "get_quote, get_filings", note: "For MCP servers. Leave blank otherwise." }) +
+      field("Install config", "f_config", item.config, { area: true, rows: 7, note: "Shown in the pop-up with a copy button. Great for MCP JSON." });
+  }
+
+  $("view").innerHTML = `
+    <div class="editor">
+      <div class="editor-head">
+        <button class="linklike" data-action="back">← All ${k.one}s</button>
+        <h2 class="cms-title">${isNew ? `New ${k.one}` : `Edit ${k.one}`}</h2>
+      </div>
+      <form id="editorForm" onsubmit="return false">${form}</form>
+      <div class="editor-bar" id="editorBar"></div>
+    </div>`;
+  renderActionBar();
+}
+
+function renderActionBar() {
+  const { kind, item, isNew } = editing;
+  const k = KINDS[kind];
+  const draft = isDraftItem(kind, item);
+  const status = isNew ? "Not saved yet"
+    : draft ? "Draft · only you can see it"
+    : "Live on your site";
+  $("editorBar").innerHTML = `
+    <span class="editor-status" id="editorStatus">${status}</span>
+    <div class="editor-actions">
+      ${isNew ? "" : `<button class="btn btn--danger" data-action="delete">Delete</button>`}
+      ${isNew ? "" : `<a class="btn" href="${k.previewHref(item)}" target="_blank" rel="noopener">Preview ↗</a>`}
+      ${draft
+        ? `<button class="btn" data-action="draft">Save draft</button>
+           <button class="btn btn--primary" data-action="publish">Publish</button>`
+        : `<button class="btn" data-action="unpublish">Unpublish</button>
+           <button class="btn btn--primary" data-action="save">Save</button>`}
+    </div>`;
+  if (dirty) setStatus("Unsaved changes");
+}
+
+function renderSite() {
+  const s = SITE;
+  $("view").innerHTML = `
+    <div class="editor">
+      <form id="editorForm" onsubmit="return false">
+        ${field("Your name", "s_name", s.name)}
+        ${field("One-line role", "s_role", s.role, { note: "Shown next to your name in the header, and as the Writing page headline." })}
+        ${field("Writing page intro", "s_writingIntro", s.writingIntro, { area: true, rows: 2 })}
+        ${field("Builds page intro", "s_buildsIntro", s.buildsIntro, { area: true, rows: 2 })}
+        <div class="row">
+          ${field("LinkedIn URL", "s_linkedin", s.linkedin)}
+          ${field("GitHub URL", "s_github", s.github)}
+        </div>
+        <div class="row">
+          ${field("Email", "s_email", s.email, { type: "email" })}
+          ${field("Live site URL", "s_url", s.url, { ph: "https://yoursite.vercel.app", note: "No trailing slash. Used for preview links from the Obsidian skills." })}
+        </div>
+      </form>
+      <div class="editor-bar">
+        <span class="editor-status" id="editorStatus">${dirty ? "Unsaved changes" : "Saving updates your live site immediately"}</span>
+        <div class="editor-actions"><button class="btn btn--primary" data-action="saveSite">Save</button></div>
+      </div>
+    </div>`;
+}
+
+/* ---------- reading the form ---------- */
+
+function readForm(kind) {
+  const base = { ...editing.item };
+  if (kind === "posts") {
+    return { ...base, title: val("f_title").trim(), dek: val("f_dek"), date: val("f_date"),
+      tags: val("f_tags"), body: val("f_body"), verified: val("f_verified"), deps: val("f_deps") };
+  }
+  return { ...base, name: val("f_name").trim(), pitch: val("f_pitch"), status: val("f_status"),
+    year: val("f_year"), stack: val("f_stack"), repo: val("f_repo"), demo: val("f_demo"),
+    detail: val("f_detail"), tools: val("f_tools"), config: val("f_config") };
+}
+
+function upsertLocal(kind, saved) {
+  const list = itemsOf(kind).filter(it => it.id !== saved.id);
+  const existed = list.length !== itemsOf(kind).length;
+  if (kind === "posts") {
+    POSTS = [saved, ...list].sort(byNewest);
+  } else {
+    // keep an edited build where it was; new builds go first, as on the server
+    BUILDS = existed ? BUILDS.map(b => (b.id === saved.id ? saved : b)) : [saved, ...BUILDS];
+  }
+}
+
+/* ---------- actions ---------- */
+
+async function saveItem(action) {
+  const { kind } = editing;
+  const k = KINDS[kind];
+  const item = readForm(kind);
+  if (!(kind === "posts" ? item.title : item.name)) {
+    setStatus(`Give the ${k.one} a ${kind === "posts" ? "title" : "name"} first.`, true);
+    $(kind === "posts" ? "f_title" : "f_name").focus();
+    return;
+  }
+  item[k.draftField] = (action === "publish" || action === "save") ? "published" : "draft";
+
+  busy = true;
+  setStatus("Saving…");
+  try {
+    const saved = (await api("POST", k.endpoint, item))[k.key];
+    upsertLocal(kind, saved);
+    EMPTY = false;
+    editing = { kind, item: saved, isNew: false };
+    dirty = false;
+    renderActionBar();
+    const live = !isDraftItem(kind, saved);
+    setStatus(live ? "Saved · live on your site now" : "Saved as draft · only you can see it");
+    toast(action === "publish" ? "Published" : action === "unpublish" ? "Unpublished — back to draft" : "Saved");
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    busy = false;
+  }
+}
+
+async function deleteItem() {
+  const { kind, item } = editing;
+  const k = KINDS[kind];
+  if (!confirm(`Delete “${k.label(item)}”? This can't be undone.`)) return;
+  busy = true;
+  setStatus("Deleting…");
+  try {
+    await api("DELETE", `${k.endpoint}?id=${encodeURIComponent(item.id)}`);
+    if (kind === "posts") POSTS = POSTS.filter(p => p.id !== item.id);
+    else BUILDS = BUILDS.filter(b => b.id !== item.id);
+    editing = null;
+    dirty = false;
+    render();
+    toast("Deleted");
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    busy = false;
+  }
+}
+
+async function saveSite() {
+  const site = {};
+  for (const f of ["name", "role", "writingIntro", "buildsIntro", "linkedin", "github", "email", "url"]) {
+    site[f] = val("s_" + f).trim();
+  }
+  busy = true;
+  setStatus("Saving…");
+  try {
+    SITE = { ...SITE, ...(await api("POST", "/api/admin/site", site)).site };
+    EMPTY = false;
+    dirty = false;
+    mountChrome("admin"); // header shows the new name straight away
+    setStatus("Saved · live on your site now");
+    toast("Site details saved");
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    busy = false;
+  }
+}
+
+async function moveBuild(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= BUILDS.length) return;
+  const before = BUILDS;
+  const next = [...BUILDS];
+  [next[i], next[j]] = [next[j], next[i]];
+  BUILDS = next;
+  renderList("builds");
+  try {
+    await api("POST", "/api/admin/builds", { order: next.map(b => b.id) });
+  } catch (e) {
+    BUILDS = before;
+    renderList("builds");
+    toast(e.message);
+  }
+}
+
+async function importSeed() {
+  busy = true;
+  try {
+    const seed = await fetch("seed.json", { cache: "no-store" }).then(r => r.json());
+    const { imported } = await api("POST", "/api/admin/import", seed);
+    await loadAll();
+    mountChrome("admin");
+    render();
+    toast(`Imported ${imported.posts} posts and ${imported.builds} builds`);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    busy = false;
+  }
+}
+
+/* ---------- images ---------- */
+
+// Big photos get scaled down to a sensible width and re-encoded as WebP in
+// the browser, so uploads stay small and pages stay fast. GIFs (which may be
+// animated) and AVIFs go up untouched.
+async function shrinkImage(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / bitmap.width);
+  if (scale === 1 && file.size <= 1024 * 1024) return file;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const out = await new Promise(resolve => canvas.toBlob(resolve, "image/webp", 0.85));
+  return out && out.size < file.size ? out : file;
+}
+
+function insertAtCursor(textarea, text, caretOffset) {
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? start;
+  let before = textarea.value.slice(0, start);
+  let after = textarea.value.slice(end);
+  if (before && !before.endsWith("\n\n")) before += before.endsWith("\n") ? "\n" : "\n\n";
+  if (after && !after.startsWith("\n")) after = "\n\n" + after;
+  textarea.value = before + text + after;
+  const caret = before.length + caretOffset;
+  textarea.focus();
+  textarea.setSelectionRange(caret, caret);
+}
+
+async function uploadImage(file, textarea) {
+  if (!file || !textarea) return;
+  if (!file.type.startsWith("image/")) return setStatus("That isn't an image.", true);
+  setStatus("Uploading image…");
+  try {
+    const body = await shrinkImage(file);
+    const { url } = await api("POST", `/api/admin/upload?name=${encodeURIComponent(file.name || "image")}`, body);
+    insertAtCursor(textarea, `![](${url})`, 2); // caret lands inside [ ] for a caption
+    dirty = true;
+    setStatus("Image added — save to keep it");
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+}
+
+let imageTarget = null;
+$("imageInput").addEventListener("change", e => {
+  uploadImage(e.target.files[0], imageTarget);
+  e.target.value = "";
+});
+
+const view = $("view");
+
+view.addEventListener("dragover", e => {
+  const ta = e.target.closest("[data-droppable]");
+  if (!ta) return;
+  e.preventDefault();
+  ta.classList.add("is-drop");
+});
+view.addEventListener("dragleave", e => {
+  const ta = e.target.closest("[data-droppable]");
+  if (ta) ta.classList.remove("is-drop");
+});
+view.addEventListener("drop", e => {
+  const ta = e.target.closest("[data-droppable]");
+  if (!ta || !e.dataTransfer.files.length) return;
+  e.preventDefault();
+  ta.classList.remove("is-drop");
+  uploadImage(e.dataTransfer.files[0], ta);
+});
+view.addEventListener("paste", e => {
+  const ta = e.target.closest("[data-droppable]");
+  const file = ta && [...(e.clipboardData?.files || [])].find(f => f.type.startsWith("image/"));
+  if (!file) return;
+  e.preventDefault();
+  uploadImage(file, ta);
+});
 
 /* ---------- events ---------- */
 
-document.addEventListener("click", e => {
-  const btn = e.target.closest("[data-act]");
-  if (!btn) return;
-  const { act, kind, i } = btn.dataset;
-  const idx = Number(i);
-  if (act === "edit") { editing = idx; renderForm(); window.scrollTo({ top: 200, behavior: "smooth" }); }
-  if (act === "del") {
-    if (!confirm("Delete this permanently from the draft?")) return;
-    state[kind].splice(idx, 1);
-    editing = null;
-    save();
-    toast("Deleted");
+view.addEventListener("input", e => {
+  if (!e.target.closest("#editorForm")) return;
+  if (!dirty) { dirty = true; setStatus("Unsaved changes"); }
+});
+
+view.addEventListener("click", e => {
+  const el = e.target.closest("[data-action], [data-edit], [data-move]");
+  if (!el || busy) return;
+
+  if (el.dataset.edit !== undefined) {
+    const it = itemsOf(tab)[Number(el.dataset.edit)];
+    editing = { kind: tab, item: { ...it }, isNew: false };
+    dirty = false;
+    render();
+    window.scrollTo({ top: 0 });
+    return;
   }
-  if (act === "up" && idx > 0) {
-    const [m] = state[kind].splice(idx, 1);
-    state[kind].splice(idx - 1, 0, m);
-    save();
-  }
-  if (act === "toggle") {
-    const it = state[kind][idx];
-    const field = DRAFT_FIELD[kind];
-    // Nothing else on the item is touched — for posts that means the date
-    // is left alone; it's editable in the form above, so nothing rewrites
-    // the date of an old post behind your back.
-    it[field] = it[field] === "draft" ? "published" : "draft";
-    save();
-    toast(it[field] === "draft"
-      ? "Back to draft — export and commit to take it down"
-      : "Published — export and commit to make it live");
+  if (el.dataset.move !== undefined) return moveBuild(Number(el.dataset.i), Number(el.dataset.move));
+
+  switch (el.dataset.action) {
+    case "new":
+      editing = { kind: tab, item: {}, isNew: true };
+      dirty = false;
+      render();
+      (document.getElementById(tab === "posts" ? "f_title" : "f_name") || {}).focus?.();
+      break;
+    case "back":
+      if (!confirmLeave()) return;
+      editing = null;
+      dirty = false;
+      render();
+      break;
+    case "draft": case "publish": case "save": case "unpublish":
+      saveItem(el.dataset.action);
+      break;
+    case "delete": deleteItem(); break;
+    case "saveSite": saveSite(); break;
+    case "image":
+      imageTarget = $(el.dataset.target);
+      $("imageInput").click();
+      break;
+    case "importSeed": importSeed(); break;
+    case "startEmpty":
+      startedEmpty = true;
+      tab = "site";
+      render();
+      break;
   }
 });
 
 document.querySelectorAll("[data-tab]").forEach(b => {
   b.onclick = () => {
+    if (b.dataset.tab === tab && !editing) return;
+    if (!confirmLeave()) return;
     tab = b.dataset.tab;
     editing = null;
-    document.querySelectorAll("[data-tab]").forEach(x =>
-      x.setAttribute("aria-selected", String(x === b)));
-    renderForm();
-    renderList();
+    dirty = false;
+    render();
   };
 });
 
-document.getElementById("clearForm").onclick = () => { editing = null; renderForm(); };
+/* ---------- start ---------- */
 
-document.getElementById("copyOut").onclick = () => {
-  navigator.clipboard.writeText(serialise())
-    .then(() => toast("content.js copied"))
-    .catch(() => toast("Couldn't copy — select the text instead"));
-};
-
-document.getElementById("downloadOut").onclick = () => {
-  const blob = new Blob([serialise()], { type: "text/javascript" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "content.js";
-  a.click();
-  URL.revokeObjectURL(a.href);
-  toast("Downloaded — a local backup, not needed for Save to site");
-};
-
-document.getElementById("saveToSite").onclick = async () => {
-  const btn = document.getElementById("saveToSite");
-  btn.disabled = true;
-  btn.textContent = "Saving…";
-  try {
-    const res = await fetch("/api/content/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: serialise() })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) {
-      toast("Saved — live in about 20s");
-    } else if (res.status === 401) {
-      toast("Session expired — sign in again");
-    } else {
-      toast(data.error || `Save failed (${res.status})`);
-    }
-  } catch (e) {
-    toast("Network error — couldn't reach the save endpoint");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Save to site";
-  }
-};
-
-function render() {
-  document.getElementById("out").textContent = serialise();
-  renderStale();
-  renderForm();
-  renderList();
-}
-
-render();
+loadAll().then(ok => {
+  mountChrome("admin");
+  document.title = "Editor — " + (SITE.name || "your site");
+  if (ok) render();
+});
 </script>
 </body>
 </html>
