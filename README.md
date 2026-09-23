@@ -1,116 +1,123 @@
 # Whitepaper
 
-A small personal site: writing on one page, a browsable shelf of builds on another, and a browser-based editor that generates your content file.
+A small personal site: writing on one page, a browsable shelf of builds on another, and a signed-in editor to manage both. Every save in the editor is live on the next page load.
 
-Almost no backend — the pages themselves are still plain HTML/CSS/JS with no framework or build step. The one exception is the editor's login, which needs a couple of small serverless functions to be real. See [Setting up the editor's login](#setting-up-the-editors-login).
+The pages are plain HTML/CSS/JS — no framework, no build step. Content lives in a database (Upstash Redis) and images in Vercel Blob, both reached through a handful of small serverless functions.
 
 ```
-index.html     Writing index
-post.html      A single post (post.html?id=slug)
-builds.html    Builds grid + detail pop-up
-admin.html     Editor — generates content.js (login-gated)
-login.html     Google sign-in page for the editor
-content.js     ← all your content lives here
-app.js         Markdown renderer + shared helpers
-styles.css     All styling
-images/        Your images
-middleware.js  Gates /admin.html behind a signed-in session
-api/auth/      Verifies Google sign-in, issues/clears the session cookie
-lib/           Shared cookie + Google-token verification code
-package.json   One dependency (jose), only for the login gate
-.vercelignore  What stays out of the live site
-.claude/skills Agent skills for the Obsidian workflow
+index.html      Writing index
+post.html       A single post (post.html?id=slug)
+builds.html     Builds grid + detail pop-up
+admin.html      The editor (Google sign-in required)
+login.html      Google sign-in page
+app.js          Loads content from the API, markdown renderer, shared helpers
+styles.css      All styling (light + dark)
+seed.json       Starter content — imported once into an empty database
+middleware.js   Gates /admin.html behind a signed-in session
+api/content.js  Public read: published posts + builds (drafts only for you)
+api/admin/      Save/delete posts and builds, site details, image upload, import
+api/auth/       Google sign-in → session cookie, and logout
+lib/            Storage, auth, and session code shared by the functions
+.claude/skills  Agent skills for the Obsidian → draft → publish workflow
 ```
+
+## How it fits together
+
+```
+Visitors ──GET /api/content──────────────▶ Upstash Redis
+Editor (you, signed in) ──/api/admin/*───▶ Upstash Redis
+                                        └─▶ Vercel Blob (images)
+Obsidian skills ──/api/admin/* + API key─┘
+```
+
+Editing content never touches git or triggers a redeploy — that only happens when the site's *code* changes.
 
 ## Deploy
 
-**Vercel — the only supported option now.**
+1. Put this repo on GitHub, then vercel.com → Add New → Project → import it. Framework preset: **Other**, build command and output directory empty.
+2. **Storage** tab → Create → **Upstash for Redis** → connect it to this project. Its connection details are added as environment variables automatically.
+3. **Storage** tab → Create → **Blob** → connect it to this project. Same — `BLOB_READ_WRITE_TOKEN` is added for you.
+4. Set up sign-in (next section) and add `ADMIN_API_KEY`.
+5. Redeploy, open `/admin.html`, sign in, and choose **Import starter content** (or **Start empty**).
 
-1. Create a new GitHub repo and upload these files to the root.
-2. Go to vercel.com → Add New → Project → import the repo.
-3. Framework preset: **Other**. Leave build command and output directory empty. Vercel installs `package.json`'s one dependency and deploys `middleware.js` / `api/` automatically — no other setup.
-4. Deploy. You'll get a live URL in about 30 seconds.
-5. Finish the login setup below before you rely on the editor being gated.
+Both stores have free tiers that comfortably cover a personal blog.
 
-Every `git push` after that redeploys automatically.
+**This needs Vercel** (or a host with the same serverless-functions model). GitHub Pages can't run the API, so the site would have no content at all there.
 
-**GitHub Pages no longer works.** It only serves static files — there's nowhere for `middleware.js` or `api/auth/*` to run, so the login gate would have nothing to check and `/admin.html` would be wide open. If you don't want the login feature, you could strip `middleware.js`, `api/`, `lib/`, `login.html`, and `package.json` back out and go back to the old approach of excluding `admin.html` from the deploy instead — but as shipped, this repo needs Vercel (or another host with the same serverless-functions-plus-middleware model, like Netlify or Cloudflare Pages).
+## Setting up sign-in
+
+One-time, in your own Google Cloud and Vercel accounts.
+
+1. **Google Cloud Console** → APIs & Services → OAuth consent screen → User type **External** → fill in the basics → add your own email as a **test user**. (Testing mode is fine indefinitely for a plain sign-in — no need to publish the app.)
+2. **Credentials** → Create Credentials → **OAuth client ID** → **Web application** → under Authorized JavaScript origins, add your live URL (e.g. `https://yoursite.vercel.app`) → Create, and copy the Client ID.
+3. Paste that Client ID into `login.html`'s `data-client_id`. It isn't secret — it identifies the app to Google, like any client-side sign-in button.
+4. **Vercel** → your project → Settings → Environment Variables:
+   - `GOOGLE_CLIENT_ID` — the same Client ID.
+   - `ALLOWED_EMAIL` — the one Google account allowed in.
+   - `SESSION_SECRET` — a long random string that signs the session cookie (`openssl rand -hex 32`, or ask the agent). Must be at least 16 characters.
+   - `ADMIN_API_KEY` — a long random string (`openssl rand -hex 32`) that lets the Obsidian skills write without a browser. Treat it like a password: anyone with it can edit your site.
+5. Redeploy — env var changes don't reach a deployment that's already running.
+
+This is personal-blog-grade protection: real, but not enterprise SSO. Sessions last 14 days (`SESSION_MAX_AGE` in `api/auth/verify.js`).
+
+## Using the editor
+
+`yoursite.com/admin.html`, or the small **Editor** link in every page's footer.
+
+- **Posts / Builds** — a list of everything with its status. Click one to edit it, or **New post** / **New build**.
+- In the editor, each button saves immediately:
+  - a draft shows **Save draft** and **Publish**
+  - a live one shows **Save** and **Unpublish**
+  - **Delete** and **Preview ↗** for anything already saved
+- **Insert image** (or drop / paste an image into the text) uploads it and adds it to the post. Big photos are scaled to 1600px wide in your browser first. Text inside the `[ ]` becomes the caption.
+- **Site** — your name, intros and links. Save, and the header updates everywhere.
+- If you try to leave with unsaved changes, it asks first.
 
 ## Drafts
 
-Every post carries a `status`, and every build carries a `visibility` — same idea, different field name because a build's `status` already means something else (prototype/live/archived):
+Posts carry `status` and builds carry `visibility` — `"draft"` or `"published"`. (Builds use a separate field because their `status` already means prototype / live / archived.)
 
-- `"draft"` — hidden from its public page. `post.html?id=slug` reports the post doesn't exist; a draft build just doesn't appear in the Builds grid.
-- `"published"`, or the field absent — live.
+Drafts are private. The public API never returns them; only you, signed in, get them. Add `?preview=1` to any page to see drafts in place on the real site. It sticks for the browser session, and `?preview=0` turns it off. In a browser where you aren't signed in, preview mode just asks you to sign in.
 
-To read a draft on the real site, add `?preview=1` to any URL. Preview stays on for the rest of the browser session, so you can click from index to post (or into a draft build's pop-up), and a black bar across the top reminds you it's on. `?preview=0` turns it off.
+## The Obsidian workflow
 
-**A draft is hidden, not secret.** Its text still sits inside `content.js`, which anyone can open directly at `yoursite.com/content.js`. That's true even with the editor's login below — the login gates who can *use the editor*, not what's in that file. Don't put anything you'd mind being read in a draft.
+Write in `second brain/Mind Palace/Blog`, then ask Claude Code to *draft my note about X*. The `blog-draft` skill converts the note, uploads any images, and saves it as a draft through the API. Read it back with the preview link it gives you, then ask it to *publish the post about X* (the `blog-publish` skill), or click Publish in the editor. Both skills show you what they're about to do and wait for a yes.
 
-## Publishing
-
-Three ways.
-
-**From Obsidian, via the agent** — the main path. Write in `second brain/Mind Palace/Blog`, then ask Claude Code to *draft my note about X*. The `blog-draft` skill converts it, adds it as a draft, and pushes. Read it back on the live site with the preview link it gives you. When you're happy, ask it to *publish the post about X* and the `blog-publish` skill flips it live. Both skills show you what they're about to do and wait for a yes before pushing.
-
-**Using the editor** — go to `yoursite.com/admin.html` (there's a small "Editor" link in the footer of every page), sign in with your Google account, write, set the status, then click *Save to site*. It commits the updated `content.js` straight to the repo through GitHub's API and Vercel redeploys in about 20 seconds — no download, no replacing files by hand. *Download* is still there if you want a local backup copy, but it's optional now.
-
-**Directly** — open `content.js` in any text editor and add an object to `POSTS` or `BUILDS`. Faster once you're used to it.
-
-### A note on the editor
-
-`/admin.html` is deployed, but `middleware.js` checks for a valid signed-in session before the file is even served — anyone else hitting that URL is redirected to `/login.html` and can't get past it. This is a real gate, not a client-side check: there's nothing in the browser to bypass, because the browser never receives the page without a valid session cookie in the first place.
-
-Signing in still works locally too, once the login setup below is done and you're pointed at the live site's `/api/auth/verify` — but running the editor purely offline (`python3 -m http.server`) skips the gate entirely, since there's no middleware without Vercel serving the request. That's fine for writing; just remember the login only matters once it's deployed.
-
-Your draft is still held in that browser's local storage until you click Save, so **save before you clear your browser data or switch machines.** Because the agent skills also write `content.js` — and now so does Save to site, from any browser you're signed into — the editor checks whether the file has changed since your last visit and asks which version to keep rather than quietly overwriting the newer one.
-
-**Save to site needs one more piece**: `api/content/save.js` commits on your behalf using a GitHub token, covered in the setup steps below.
-
-## Setting up the editor's login
-
-One-time setup, using your own Google Cloud and Vercel accounts — I can't do these steps for you.
-
-1. **Google Cloud Console** → APIs & Services → OAuth consent screen → User type **External** → fill in the basics → add your own email as a **test user**. (Testing mode is fine indefinitely for a plain sign-in with no extra scopes — no need to publish the app.)
-2. **Credentials** → Create Credentials → **OAuth client ID** → Application type **Web application** → under Authorized JavaScript origins, add your live Vercel URL (e.g. `https://yoursite.vercel.app`) → Create. Copy the Client ID it gives you (ends in `.apps.googleusercontent.com`).
-3. Paste that Client ID into `login.html`, replacing `YOUR_CLIENT_ID.apps.googleusercontent.com` in the `data-client_id` attribute. This value isn't secret — it identifies the app to Google, the same way it appears in any client-side Google sign-in button — but it does need to match exactly what you set as the env var next.
-4. **GitHub** → Settings → Developer settings → **Fine-grained tokens** → Generate new token → Repository access: **Only select repositories** → pick just this repo → Permissions → **Contents: Read and write**, nothing else → Generate, and copy the token.
-
-   This one is more sensitive than the three below it — those only control who can sign in, but this token can rewrite your repo. Scoping it to one repo with one permission (as above) means the worst case of it leaking is someone editing this site's content, not your whole GitHub account.
-5. **Vercel** → your project → Settings → Environment Variables → add four:
-   - `GOOGLE_CLIENT_ID` — the same Client ID from step 2.
-   - `ALLOWED_EMAIL` — the one Google account allowed to sign in as the owner.
-   - `SESSION_SECRET` — a long random string, used only to sign the session cookie. Generate one with `openssl rand -base64 32` (or ask the agent to generate one — it's just randomness, not tied to any account).
-   - `GITHUB_TOKEN` — the token from step 4.
-6. Redeploy (env var changes don't apply to a deployment already running — an empty commit or the Redeploy button in Vercel both work).
-7. Visit `/admin.html`. You should land on `/login.html`; sign in with the allowed account and you should land back in the editor. Any other Google account gets turned away with a 403. Try editing something and clicking **Save to site** — check GitHub for the new commit, then the live site once Vercel redeploys.
-
-This is personal-blog-grade protection — real, but not enterprise SSO. No device management, no audit log, a 14-day session (change `SESSION_MAX_AGE` in `api/auth/verify.js` if you want shorter). Reasonable for a single-owner site.
-
-## Adding images
-
-Put the file in `images/`, then reference it in the body:
+The skills need a `.env.local` file at the repo root (gitignored, never committed):
 
 ```
-![Architecture of the research crew](images/crew-diagram.png)
+SITE_URL=https://yoursite.vercel.app
+ADMIN_API_KEY=the same value you set in Vercel
 ```
 
-The alt text renders as a caption underneath. Resize images to about 1400px wide before uploading — anything larger just slows the page down.
+## Local development
+
+The pages load content from `/api/content`, so a plain static server isn't enough. Use Vercel's:
+
+```bash
+npx vercel link
+```
+
+```bash
+npx vercel env pull .env.local
+```
+
+```bash
+npx vercel dev
+```
 
 ## Markdown supported
 
-`## Heading` · `### Subheading` · `**bold**` · `*italic*` · `` `code` `` · ```` ```code block``` ```` · `- list` · `1. list` · `> quote` · `[link](url)` · `![caption](images/x.png)` · `---`
+`## Heading` · `### Subheading` · `**bold**` · `*italic*` · `` `code` `` · ```` ```code block``` ```` · `- list` · `1. list` · `> quote` · `[link](url)` · `![caption](url)` · `---`
 
 Three or more `##` headings in a post automatically generate a contents list at the top.
 
 ## Link previews on LinkedIn
 
-Each page has Open Graph tags pointing at `images/og-default.png`. Add a 1200×630px image at that path and every shared link gets a proper preview card instead of a grey box.
-
-Because there's no build step, all posts share that one preview image. If you want per-post images later, that's the point where moving to a static site generator earns its keep.
+Each page has Open Graph tags pointing at `images/og-default.png`. Add a 1200×630px image at that path and every shared link gets a proper preview card instead of a grey box. All posts share that one image; per-post previews would need pages rendered on the server.
 
 After changing OG tags, run the URL through LinkedIn's Post Inspector to clear its cache.
 
 ## Making it yours
 
-Colours and type live at the top of `styles.css` as CSS variables. The accent is a single ink blue — change `--accent` and the whole site follows.
+Colours and type live at the top of `styles.css` as CSS variables, with a matching dark set below them. The accent is a single ink blue — change `--accent` and the whole site follows.

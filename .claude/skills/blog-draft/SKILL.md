@@ -1,17 +1,36 @@
 ---
 name: blog-draft
-description: Import a reflection written in Obsidian and add it to the site as a hidden draft. Use when the user says things like "take my latest reflection and put it on the site", "draft my Obsidian note", "import the post about X", or names a note in the Obsidian Blog folder.
+description: Import a reflection written in Obsidian and add it to the site as a private draft. Use when the user says things like "take my latest reflection and put it on the site", "draft my Obsidian note", "import the post about X", or names a note in the Obsidian Blog folder.
 ---
 
 # Import an Obsidian note as a site draft
 
-Turns a note from the Obsidian vault into a `POSTS` entry in `content.js` with
-`status: "draft"`, then commits and pushes. The draft is hidden from the public
-site; the user reads it back via a `?preview=1` URL and publishes later with the
-`blog-publish` skill.
+Turns a note from the Obsidian vault into a post on the site with
+`status: "draft"`, saved straight to the site's database through its admin API.
+Drafts are private: only the signed-in owner can see them, via a `?preview=1`
+link. Publishing later is the `blog-publish` skill (or the Publish button in
+the site's editor). There are no git commits for content.
 
 **Vault folder:** `C:\Users\steve\Haribo Mix\second brain\Mind Palace\Blog`
 **Site repo:** `C:\Users\steve\Haribo Mix\vibe repo`
+
+## 0. Credentials
+
+The site's admin API needs two values, kept in `.env.local` at the repo root
+(gitignored — never commit it, never print its contents):
+
+```
+SITE_URL=https://your-site.vercel.app
+ADMIN_API_KEY=...the same value as ADMIN_API_KEY in Vercel...
+```
+
+If the file or either value is missing, stop and tell the user how to add it.
+Load it in the same shell command as each request so the key never appears in
+the command text:
+
+```bash
+set -a; . ./.env.local; set +a; curl -sS "$SITE_URL/api/content?drafts=1" -H "Authorization: Bearer $ADMIN_API_KEY"
+```
 
 ## 1. Pick the note
 
@@ -43,7 +62,7 @@ Fill in whatever is missing:
 | `dek` | write one sentence from the opening paragraph — **tell the user you generated it** so they can replace it |
 | `date` | today, `YYYY-MM-DD` |
 | `tags` | inline `#tags` found in the note, stripped from the body; else `[]` |
-| `id` | slug of the title (see step 4) |
+| `id` | slug of the title: lowercase, non-alphanumerics → `-`, trim leading/trailing `-`, max 60 chars |
 | `verified`, `deps` | `""` — these are for technical posts, leave blank unless frontmatter sets them |
 
 The user writes reflections, not structured posts. A note with no frontmatter at
@@ -51,21 +70,20 @@ all is the normal case, not an error.
 
 ## 3. Convert the body
 
-The site's renderer (`app.js`) is deliberately small. Convert to what it
-actually supports — `##`–`####` headings, `**bold**`, `*italic*`, `` `code` ``,
-` ```blocks``` `, `-`/`1.` lists, `>` quotes, `[text](url)`,
-`![caption](images/x.png)`, `---`.
+The site's renderer (`markdown()` in `app.js`) is deliberately small. Convert to
+what it actually supports — `##`–`####` headings, `**bold**`, `*italic*`,
+`` `code` ``, ` ```blocks``` `, `-`/`1.` lists, `>` quotes, `[text](url)`,
+`![caption](url)`, `---`.
 
 - Strip the frontmatter block.
 - Strip the leading `# H1` — it became the title. **Demote any remaining `#` to
-  `##`**: the renderer only matches `#{2,4}` (`app.js:62`), so a lone `#` would
-  render as literal "# text".
+  `##`**: the renderer only matches `#{2,4}`, so a lone `#` would render as
+  literal "# text".
 - `[[Note|alias]]` → `alias`; `[[Note]]` → `Note`. There are no wiki pages to
   link to on this site.
-- `![[image.png]]` → copy the attachment into the repo's `images/` folder and
-  rewrite to `![](images/image.png)`. Search the vault for the file. **If you
-  can't find it, leave the line as-is and report it** — never silently drop
-  someone's image.
+- `![[image.png]]` → find the file in the vault and upload it (step 4). Rewrite
+  the embed to `![](<returned url>)`. **If you can't find it or the upload
+  fails, leave the line as-is and report it** — never silently drop an image.
 - Remove inline `#tags` lines you consumed as tags.
 - Normalise `\r\n` to `\n`. Leave the prose itself alone — don't rewrite the
   user's words, tighten their sentences, or "improve" the structure.
@@ -73,49 +91,56 @@ actually supports — `##`–`####` headings, `**bold**`, `*italic*`, `` `code` 
 Alt text renders as a visible caption underneath the image, so only give an
 image alt text if it reads well as a caption.
 
-## 4. Write into content.js
+## 4. Upload images
 
-- **Slug**: lowercase, non-alphanumerics → `-`, trim leading/trailing `-`, cap
-  at 60 chars. Same rule as `slug()` in `admin.html`.
-- **If a post with that `id` already exists, update it in place** rather than
-  adding a second copy — re-running after an edit in Obsidian must be safe. Say
-  which one you did. **Keep the existing `status`**: re-importing an edit to a
-  post that's already live must not silently take it down. Mention that it
-  stayed live, so the user knows the edit is public the moment you push.
-- Otherwise insert at the top of the `POSTS` array with `status: "draft"`.
-- Field order matches the existing entries: `id, title, dek, date, status, tags,
-  verified, deps, body`.
-
-**Escaping — get this right or the file won't parse.** `body` is a JS template
-literal. In the body text, escape in this order: `\` → `\\`, then `` ` `` →
-`` \` ``, then `${` → `\${`. This mirrors `tpl()` in `admin.html`. Fenced code
-blocks inside the note contain backticks, so this bites on almost every
-technical post.
-
-Then check the file parses before you commit:
+Each image goes up on its own; the response is `{ "url": "..." }`:
 
 ```bash
-node --check content.js
+set -a; . ./.env.local; set +a; curl -sS -X POST "$SITE_URL/api/admin/upload?name=photo.png" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: image/png" --data-binary @"C:/path/to/photo.png"
 ```
 
-## 5. Confirm, then push
+Accepted: JPEG, PNG, WebP, GIF, AVIF, up to 4 MB. Set `Content-Type` to match
+the file. A larger file is rejected — report it rather than skipping silently
+(the user can resize it, or add it later through the editor's Insert image,
+which shrinks photos automatically).
 
-Show the user, before touching git:
+## 5. Check whether it already exists
+
+Fetch everything including drafts (`GET /api/content?drafts=1`, as in step 0)
+and look for a post with the same `id`.
+
+- **Exists → update it in place**, and **keep its existing `status`**:
+  re-importing an edit to a post that's already live must not silently take it
+  down. Tell the user it stayed live, so they know the edit is public as soon
+  as you save.
+- **New → `status: "draft"`.**
+
+## 6. Confirm, then save
+
+Show the user, before saving anything:
 
 - title, dek (flagged if you wrote it), date, tags, id
-- whether this created a new draft or updated an existing one
-- any warnings — missing image attachments, syntax you couldn't convert
+- new draft, or update to an existing post (and whether that post is live)
+- any warnings — missing images, syntax you couldn't convert
 - a body word count
 
-**Ask before committing.** A push is public and immediate. On approval:
+**Ask before saving.** On approval, write the post as JSON to a file in your
+scratchpad (not the repo) — this sidesteps all shell-quoting problems with the
+body — then POST it:
 
-```bash
-git add content.js images/ && git commit && git push
+```json
+{ "id": "...", "title": "...", "dek": "...", "date": "YYYY-MM-DD", "status": "draft",
+  "tags": ["..."], "verified": "", "deps": "", "body": "..." }
 ```
 
-Commit message: `Add draft: <title>` (or `Update draft: <title>`).
+```bash
+set -a; . ./.env.local; set +a; curl -sS -X POST "$SITE_URL/api/admin/posts" -H "Authorization: Bearer $ADMIN_API_KEY" -H "Content-Type: application/json" --data-binary @"<scratchpad>/post.json"
+```
 
-Then hand back the preview link — `<SITE.url>/post.html?id=<id>&preview=1` if
-`SITE.url` is set in `content.js`, otherwise the path alone with a note that
-filling in `SITE.url` would make it clickable. Mention that Vercel takes about
-20 seconds, and that publishing is `blog-publish` when they're happy.
+The response is `{ "post": { ... } }` with the saved post, or `{ "error": "..." }`
+— show the error if there is one.
+
+Then hand back the preview link: `$SITE_URL/post.html?id=<id>&preview=1`. It
+shows the draft only in a browser where the user is signed in to the editor.
+It's saved instantly — no redeploy to wait for. Publishing is `blog-publish`,
+or the Publish button in the editor.

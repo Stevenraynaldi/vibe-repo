@@ -48,11 +48,9 @@
 
 <footer id="foot"></footer>
 
-<script src="content.js"></script>
 <script src="app.js"></script>
 <script>
-  mountChrome("builds");
-
+startPage("builds", () => {
   document.title = SITE.name + " — Builds";
   document.getElementById("introText").textContent = SITE.buildsIntro;
 
@@ -155,6 +153,7 @@
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && overlay.getAttribute("data-open") === "true") closeSheet();
   });
+});
 </script>
 </body>
 </html>

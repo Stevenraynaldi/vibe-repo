@@ -147,16 +147,60 @@ function byNewest(a, b) {
   return String(b.date || "").localeCompare(String(a.date || ""));
 }
 
+/* ---------- content ----------
+   Everything comes from /api/content (backed by the database), so a save
+   in the editor shows up on the next page load. Pages call startPage(),
+   which fills these globals and then runs the page's render function. */
+
+let SITE = { name: "", role: "", writingIntro: "", buildsIntro: "", linkedin: "", github: "", email: "", url: "" };
+let POSTS = [];
+let BUILDS = [];
+let DRAFTS_LOCKED = false; // preview was asked for, but you aren't signed in
+
+async function fetchContent(withDrafts) {
+  const res = await fetch("/api/content" + (withDrafts ? "?drafts=1" : ""), { cache: "no-store" });
+  if (res.status === 401 && withDrafts) {
+    DRAFTS_LOCKED = true;
+    return fetchContent(false);
+  }
+  if (!res.ok) throw new Error(`Couldn't load content (${res.status})`);
+  return res.json();
+}
+
+async function loadContent() {
+  try {
+    const data = await fetchContent(previewMode());
+    SITE = { ...SITE, ...data.site };
+    POSTS = data.posts || [];
+    BUILDS = data.builds || [];
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function startPage(current, render) {
+  loadContent().then(ok => {
+    mountChrome(current);
+    if (ok) return render();
+    const main = document.querySelector("main");
+    if (main) {
+      main.innerHTML = `
+        <div class="wrap" style="padding:80px 0">
+          <div class="empty">
+            <p>Couldn't load this page right now.</p>
+            <p class="hint">Try again in a moment.</p>
+          </div>
+        </div>`;
+    }
+  });
+}
+
 /* ---------- drafts & preview ----------
-   A post with status "draft" is hidden from the public site. Anything
-   without a status counts as published, so older posts are unaffected.
-
-   Preview mode is switched on with ?preview=1 and off with ?preview=0.
-   It sticks for the rest of the browser session so you can click from
-   the index into a draft without carrying the parameter around.
-
-   Note: hidden is not secret. Draft text still ships inside content.js,
-   which anyone can open directly. Don't put anything sensitive in one.
+   Drafts never leave the server unless you're signed in as the owner.
+   Preview mode (?preview=1 to turn on, ?preview=0 to turn off) asks for
+   them, and sticks for the rest of the browser session so you can click
+   from the index into a draft without carrying the parameter around.
    -------------------------------------------------------------------- */
 
 const PREVIEW_KEY = "whitepaper-preview";
@@ -240,7 +284,9 @@ function mountChrome(current) {
   if (head) {
     const bar = previewMode()
       ? `<div class="previewbar">
-           <span><b>Preview</b> — drafts are visible on this device only</span>
+           <span>${DRAFTS_LOCKED
+             ? `<b>Preview</b> — <a href="login.html">sign in</a> to see drafts`
+             : `<b>Preview</b> — drafts are visible because you're signed in`}</span>
            <a href="${esc(previewExitHref())}">Exit preview</a>
          </div>`
       : "";

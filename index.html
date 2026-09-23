@@ -36,11 +36,9 @@
 
 <footer id="foot"></footer>
 
-<script src="content.js"></script>
 <script src="app.js"></script>
 <script>
-  mountChrome("writing");
-
+startPage("writing", () => {
   document.title = SITE.name + " — Writing";
   document.getElementById("introTitle").textContent = SITE.role;
   document.getElementById("introText").textContent = SITE.writingIntro;
@@ -72,6 +70,7 @@
         </div>
       </article>`).join("");
   }
+});
 </script>
 </body>
 </html>

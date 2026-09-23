@@ -2,8 +2,9 @@
   "name": "whitepaper",
   "private": true,
   "type": "module",
-  "description": "Static site. The only code here that runs server-side is the editor's login gate — see README.md.",
+  "description": "Personal blog + builds showcase. Static pages; content served from Upstash Redis and images from Vercel Blob via the functions in api/ — see README.md.",
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "jose": "^5.9.6"
   }
 }
