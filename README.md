@@ -70,6 +70,8 @@ This is personal-blog-grade protection: real, but not enterprise SSO. Sessions l
   - a live one shows **Save** and **Unpublish**
   - **Delete** and **Preview ↗** for anything already saved
 - **Insert image** (or drop / paste an image into the text) uploads it and adds it to the post. Big photos are scaled to 1600px wide in your browser first. Text inside the `[ ]` becomes the caption.
+- **Insert video** takes a YouTube, Vimeo or Loom link and embeds a player (see *Markdown supported* below).
+- **Builds** also take a **card icon** — a logo or app icon shown on the card and in its pop-up.
 - **Site** — your name, intros and links. Save, and the header updates everywhere.
 - If you try to leave with unsaved changes, it asks first.
 
@@ -108,9 +110,19 @@ npx vercel dev
 
 ## Markdown supported
 
-`## Heading` · `### Subheading` · `**bold**` · `*italic*` · `` `code` `` · ```` ```code block``` ```` · `- list` · `1. list` · `> quote` · `[link](url)` · `![caption](url)` · `---`
+`## Heading` · `### Subheading` · `**bold**` · `*italic*` · `` `code` `` · ```` ```code block``` ```` · `- list` · `1. list` · `> quote` · `[link](url)` · `![caption](url)` · `---` · tables
 
-Three or more `##` headings in a post automatically generate a contents list at the top.
+Tables are the pipe kind Obsidian writes — paste them in as-is, alignment and all:
+
+```
+| Tool   | Stars | Notes |
+| :----- | ----: | :---: |
+| CrewAI |    12 | fast  |
+```
+
+**Videos** — put a YouTube, Vimeo or Loom link on its own line (or use Obsidian's `![caption](link)`) and it becomes an embedded player; timestamps like `?t=1m30s` carry over, and YouTube Shorts get a vertical player. Upload videos to YouTube as **Unlisted** — they stay out of YouTube search, and YouTube handles streaming. Don't put video files in Blob storage: uploads through the site cap at ~4 MB, and every play would count against its bandwidth.
+
+Obsidian `[[wikilinks]]` show as plain text (there are no wiki pages to link to). Three or more `##` headings in a post automatically generate a contents list at the top.
 
 ## Link previews on LinkedIn
 

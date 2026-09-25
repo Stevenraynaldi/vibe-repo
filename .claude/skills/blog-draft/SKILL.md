@@ -73,14 +73,22 @@ all is the normal case, not an error.
 The site's renderer (`markdown()` in `app.js`) is deliberately small. Convert to
 what it actually supports — `##`–`####` headings, `**bold**`, `*italic*`,
 `` `code` ``, ` ```blocks``` `, `-`/`1.` lists, `>` quotes, `[text](url)`,
-`![caption](url)`, `---`.
+`![caption](url)`, `---`, and pipe tables (`| a | b |` with a `| --- | :---: |`
+row; column alignment is kept). **Leave Obsidian tables exactly as they are.**
+
+Video embeds also work: a YouTube, Vimeo or Loom link on its own line, or
+Obsidian's `![caption](video link)`, becomes a player. **Leave those as-is** —
+they aren't images, so don't try to upload them. A video link in the middle of
+a sentence stays a plain link.
 
 - Strip the frontmatter block.
 - Strip the leading `# H1` — it became the title. **Demote any remaining `#` to
   `##`**: the renderer only matches `#{2,4}`, so a lone `#` would render as
   literal "# text".
 - `[[Note|alias]]` → `alias`; `[[Note]]` → `Note`. There are no wiki pages to
-  link to on this site.
+  link to on this site. Inside a table Obsidian writes `[[Note\|alias]]` — that
+  becomes `alias` too. (The site also flattens any wikilink you miss, so this is
+  tidiness, not a correctness issue.)
 - `![[image.png]]` → find the file in the vault and upload it (step 4). Rewrite
   the embed to `![](<returned url>)`. **If you can't find it or the upload
   fails, leave the line as-is and report it** — never silently drop an image.
