@@ -17,6 +17,10 @@ function esc(s) {
 
 function inline(s) {
   return s
+    // Obsidian [[Note]] / [[Note|alias]] — no wiki pages here, so show the text.
+    // Embeds (![[file]]) are left alone; the importer turns those into images.
+    .replace(/(^|[^!])\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$1$3")
+    .replace(/(^|[^!])\[\[([^\]]+)\]\]/g, "$1$2")
     // images first, so their alt text isn't mangled
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g,
       (m, alt, src) => `<img src="${esc(src)}" alt="${esc(alt)}">` +
@@ -26,6 +30,105 @@ function inline(s) {
     .replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`)
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+}
+
+/* ---------- tables ----------
+   Pipe tables as Obsidian and GitHub write them:
+     | Name | Score |
+     | :--- | ----: |
+     | a    | 1     |
+   Outer pipes are optional; \| inside a cell is a literal pipe. */
+
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+function splitRow(line) {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|") && !s.endsWith("\\|")) s = s.slice(0, -1);
+  const cells = [];
+  let cur = "";
+  for (let k = 0; k < s.length; k++) {
+    if (s[k] === "\\" && s[k + 1] === "|") { cur += "|"; k++; continue; }
+    if (s[k] === "|") { cells.push(cur.trim()); cur = ""; continue; }
+    cur += s[k];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+function isTableStart(line, next) {
+  return line.includes("|") && next !== undefined && next.includes("|") &&
+    TABLE_DELIMITER.test(next) && splitRow(line).length === splitRow(next).length;
+}
+
+function tableHtml(headerLine, delimiterLine, rowLines) {
+  const align = splitRow(delimiterLine).map(c =>
+    c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : "");
+  const header = splitRow(headerLine);
+  const cell = (tag, text, i) =>
+    `<${tag}${align[i] ? ` style="text-align:${align[i]}"` : ""}>${inline(text || "")}</${tag}>`;
+  const rows = rowLines.map(l => {
+    const cells = splitRow(l);
+    return "<tr>" + header.map((_, i) => cell("td", cells[i], i)).join("") + "</tr>";
+  });
+  return `<div class="table-wrap"><table>` +
+    `<thead><tr>${header.map((h, i) => cell("th", h, i)).join("")}</tr></thead>` +
+    `<tbody>${rows.join("")}</tbody></table></div>`;
+}
+
+/* ---------- video embeds ----------
+   A YouTube, Vimeo or Loom link on its own line — or Obsidian's
+   ![caption](video link) — becomes an embedded player. The player URL is
+   rebuilt from the video's id alone, never from the raw link. */
+
+function toSeconds(t) {
+  if (!t) return 0;
+  if (/^\d+$/.test(t)) return Number(t);
+  const m = t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
+  return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
+}
+
+function videoEmbed(link) {
+  let u;
+  try { u = new URL(link); } catch { return null; }
+  const host = u.hostname.replace(/^(www|m)\./, "");
+  const parts = u.pathname.split("/").filter(Boolean);
+
+  if (host === "youtube.com" || host === "youtube-nocookie.com" || host === "youtu.be") {
+    const id = host === "youtu.be" ? parts[0]
+      : ["shorts", "embed", "live"].includes(parts[0]) ? parts[1]
+      : u.searchParams.get("v");
+    if (!/^[\w-]{11}$/.test(id || "")) return null;
+    const start = toSeconds(u.searchParams.get("t") || u.searchParams.get("start"));
+    return {
+      src: `https://www.youtube-nocookie.com/embed/${id}${start ? `?start=${start}` : ""}`,
+      vertical: parts[0] === "shorts"
+    };
+  }
+  if (host === "vimeo.com" && /^\d+$/.test(parts[0] || "")) {
+    const hash = /^[0-9a-f]+$/.test(parts[1] || "") ? `?h=${parts[1]}` : ""; // unlisted videos
+    return { src: `https://player.vimeo.com/video/${parts[0]}${hash}`, vertical: false };
+  }
+  if (host === "loom.com" && parts[0] === "share" && /^[0-9a-f]+$/.test(parts[1] || "")) {
+    return { src: `https://www.loom.com/embed/${parts[1]}`, vertical: false };
+  }
+  return null;
+}
+
+// Takes an already-escaped markdown line; returns player HTML, or null if
+// the line isn't just a video.
+function videoBlock(line) {
+  const m = line.trim().match(/^(?:!\[([^\]]*)\]\((\S+)\)|(https?:\/\/\S+))$/);
+  if (!m) return null;
+  const video = videoEmbed((m[2] || m[3]).replace(/&amp;/g, "&"));
+  if (!video) return null;
+  const caption = m[1] || "";
+  return `<figure class="video${video.vertical ? " video--vertical" : ""}">` +
+    `<div class="video__frame"><iframe src="${esc(video.src)}" title="${caption || "Video"}" loading="lazy" ` +
+    `allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ` +
+    `referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>` +
+    (caption ? `<figcaption>${caption}</figcaption>` : "") +
+    `</figure>`;
 }
 
 /* ---------- block markdown ---------- */
@@ -114,6 +217,27 @@ function markdown(src) {
       continue;
     }
 
+    // video on its own line
+    const video = videoBlock(line);
+    if (video) {
+      flush();
+      out.push(video);
+      i++;
+      continue;
+    }
+
+    // table
+    if (isTableStart(line, lines[i + 1])) {
+      flush();
+      const header = line;
+      const delimiter = lines[i + 1];
+      const rows = [];
+      i += 2;
+      while (i < lines.length && lines[i].trim() && lines[i].includes("|")) rows.push(lines[i++]);
+      out.push(tableHtml(header, delimiter, rows));
+      continue;
+    }
+
     // blank line
     if (!line.trim()) {
       flush();
@@ -130,6 +254,12 @@ function markdown(src) {
 }
 
 /* ---------- helpers ---------- */
+
+// Only web addresses or site-relative paths, never javascript: and friends.
+function safeImageUrl(u) {
+  const s = String(u || "").trim();
+  return /^https?:\/\//i.test(s) || /^\/?[\w-]+\//.test(s) ? s : "";
+}
 
 function fmtDate(iso) {
   if (!iso) return "";

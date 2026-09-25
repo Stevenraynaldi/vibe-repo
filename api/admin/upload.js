@@ -18,13 +18,21 @@ const TYPES = {
   "image/avif": "avif"
 };
 
+// Connecting a Blob store with a custom env-var prefix renames the variable
+// (e.g. IMAGES_READ_WRITE_TOKEN), so fall back to any value shaped like one.
+function blobToken() {
+  return process.env.BLOB_READ_WRITE_TOKEN ||
+    Object.values(process.env).find(v => typeof v === "string" && v.startsWith("vercel_blob_rw_"));
+}
+
 // POST raw image bytes, Content-Type: image/…, ?name=original-filename
 // → { url } of the stored, publicly served image
 export async function POST(request) {
   if (!(await isOwner(request))) return unauthorized();
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return json({ error: "Image storage isn't connected yet — add Blob from Vercel's Storage tab." }, 500);
+  const token = blobToken();
+  if (!token) {
+    return json({ error: "Image storage isn't reaching this deployment. In Vercel → Storage, check your Blob store is connected to Production, then redeploy." }, 500);
   }
 
   const type = (request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
@@ -45,7 +53,8 @@ export async function POST(request) {
     const blob = await put(`images/${base}.${ext}`, bytes, {
       access: "public",
       contentType: type,
-      addRandomSuffix: true
+      addRandomSuffix: true,
+      token
     });
     return json({ url: blob.url });
   } catch (e) {

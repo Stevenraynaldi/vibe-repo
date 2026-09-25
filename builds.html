@@ -83,7 +83,10 @@ startPage("builds", () => {
             <span class="stamp stamp--${esc(b.status || "prototype")}">${esc(b.status || "prototype")}</span>
           </span>
         </div>
-        <div class="card__name">${esc(b.name)}</div>
+        <div class="card__head">
+          ${safeImageUrl(b.icon) ? `<img class="build-icon" src="${esc(safeImageUrl(b.icon))}" alt="" loading="lazy">` : ""}
+          <div class="card__name">${esc(b.name)}</div>
+        </div>
         <div class="card__pitch">${esc(b.pitch || "")}</div>
         ${(b.stack || []).length
           ? `<div class="card__stack">${b.stack.map(s => `<span>${esc(s)}</span>`).join("")}</div>`
@@ -104,7 +107,10 @@ startPage("builds", () => {
     sheetIdx.textContent = `Build ${pad(i)} — ${b.status || "prototype"}`;
 
     sheetBody.innerHTML = `
-      <h2 id="sheetTitle">${esc(b.name)}</h2>
+      <div class="sheet__head">
+        ${safeImageUrl(b.icon) ? `<img class="build-icon build-icon--lg" src="${esc(safeImageUrl(b.icon))}" alt="">` : ""}
+        <h2 id="sheetTitle">${esc(b.name)}</h2>
+      </div>
       <p class="sheet__pitch">${esc(b.pitch || "")}</p>
 
       <dl class="spec">

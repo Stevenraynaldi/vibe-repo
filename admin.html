@@ -168,7 +168,7 @@ function renderList(kind) {
     return `
       <li class="cms-row">
         <button class="cms-row__main" data-edit="${i}">
-          <span class="cms-row__title">${esc(k.label(it) || "Untitled")}</span>
+          <span class="cms-row__title">${safeImageUrl(it.icon) ? `<img class="build-icon cms-row__icon" src="${esc(safeImageUrl(it.icon))}" alt="">` : ""}${esc(k.label(it) || "Untitled")}</span>
           <span class="cms-row__meta">
             <span class="stamp stamp--${draft ? "draft" : "live"}">${draft ? "draft" : "live"}</span>
             ${esc(k.meta(it) || "")}
@@ -191,7 +191,8 @@ function imageTools(textareaId) {
   return `
     <div class="editor-tools">
       <button class="mini" type="button" data-action="image" data-target="${textareaId}">Insert image</button>
-      <span class="note" style="margin:0">…or drop / paste one into the text. Text inside the [ ] becomes its caption.</span>
+      <button class="mini" type="button" data-action="video" data-target="${textareaId}">Insert video</button>
+      <span class="note" style="margin:0">Drop or paste images into the text. Videos: a YouTube, Vimeo or Loom link on its own line. Text inside [ ] becomes a caption.</span>
     </div>`;
 }
 
@@ -210,7 +211,7 @@ function renderEditor() {
       `</div>` +
       `<div class="field"><label for="f_body">Body</label>${imageTools("f_body")}
         <textarea id="f_body" rows="20" data-droppable>${esc(item.body || "")}</textarea>
-        <p class="note">Markdown: ## heading, **bold**, *italic*, [link](url), \`code\`, - lists, &gt; quotes. Three or more ## headings add a contents list.</p></div>` +
+        <p class="note">Markdown: ## heading, **bold**, *italic*, [link](url), \`code\`, - lists, &gt; quotes, | tables |. Paste straight from Obsidian. Three or more ## headings add a contents list.</p></div>` +
       `<details class="more"${item.verified || item.deps ? " open" : ""}><summary>Technical details</summary>` +
         `<div class="row">` +
           field("Verified on", "f_verified", item.verified, { type: "date" }) +
@@ -220,6 +221,8 @@ function renderEditor() {
   } else {
     form =
       field("Name", "f_name", item.name, { required: true, ph: "Market Research MCP" }) +
+      `<div class="field"><label>Card icon</label><div id="iconField">${iconField(item.icon)}</div>
+        <p class="note">A logo or app icon — square works best. Shown on the build's card and in its pop-up.</p></div>` +
       field("One-line pitch", "f_pitch", item.pitch, { note: "What it does, in plain words. Shows on the card." }) +
       `<div class="row">` +
         field("Status", "f_status", item.status || "prototype", { select: ["prototype", "live", "archived"],
@@ -306,7 +309,7 @@ function readForm(kind) {
   }
   return { ...base, name: val("f_name").trim(), pitch: val("f_pitch"), status: val("f_status"),
     year: val("f_year"), stack: val("f_stack"), repo: val("f_repo"), demo: val("f_demo"),
-    detail: val("f_detail"), tools: val("f_tools"), config: val("f_config") };
+    detail: val("f_detail"), tools: val("f_tools"), config: val("f_config"), icon: val("f_icon") };
 }
 
 function upsertLocal(kind, saved) {
@@ -432,10 +435,10 @@ async function importSeed() {
 // Big photos get scaled down to a sensible width and re-encoded as WebP in
 // the browser, so uploads stay small and pages stay fast. GIFs (which may be
 // animated) and AVIFs go up untouched.
-async function shrinkImage(file) {
+async function shrinkImage(file, maxWidth = 1600) {
   if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1600 / bitmap.width);
+  const scale = Math.min(1, maxWidth / bitmap.width);
   if (scale === 1 && file.size <= 1024 * 1024) return file;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
@@ -458,13 +461,18 @@ function insertAtCursor(textarea, text, caretOffset) {
   textarea.setSelectionRange(caret, caret);
 }
 
+async function uploadFile(file, maxWidth) {
+  if (!file.type.startsWith("image/")) throw new Error("That isn't an image.");
+  const body = await shrinkImage(file, maxWidth);
+  const { url } = await api("POST", `/api/admin/upload?name=${encodeURIComponent(file.name || "image")}`, body);
+  return url;
+}
+
 async function uploadImage(file, textarea) {
   if (!file || !textarea) return;
-  if (!file.type.startsWith("image/")) return setStatus("That isn't an image.", true);
   setStatus("Uploading image…");
   try {
-    const body = await shrinkImage(file);
-    const { url } = await api("POST", `/api/admin/upload?name=${encodeURIComponent(file.name || "image")}`, body);
+    const url = await uploadFile(file, 1600);
     insertAtCursor(textarea, `![](${url})`, 2); // caret lands inside [ ] for a caption
     dirty = true;
     setStatus("Image added — save to keep it");
@@ -473,9 +481,38 @@ async function uploadImage(file, textarea) {
   }
 }
 
-let imageTarget = null;
+function iconField(url) {
+  const src = safeImageUrl(url);
+  return `
+    <div class="icon-field">
+      <span class="icon-slot">${src ? `<img class="build-icon build-icon--lg" src="${esc(src)}" alt="">` : "No icon"}</span>
+      <button class="mini" type="button" data-action="iconUpload">${src ? "Replace" : "Upload icon"}</button>
+      ${src ? `<button class="mini" type="button" data-action="iconRemove">Remove</button>` : ""}
+      <input type="hidden" id="f_icon" value="${esc(url || "")}">
+    </div>`;
+}
+
+function setIcon(url) {
+  $("iconField").innerHTML = iconField(url);
+  dirty = true;
+}
+
+async function uploadIcon(file) {
+  if (!file) return;
+  setStatus("Uploading icon…");
+  try {
+    setIcon(await uploadFile(file, 512)); // icons show at ~52px; 512 stays sharp on any screen
+    setStatus("Icon added — save to keep it");
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+}
+
+let imageTarget = null; // a textarea, or "icon"
 $("imageInput").addEventListener("change", e => {
-  uploadImage(e.target.files[0], imageTarget);
+  const file = e.target.files[0];
+  if (imageTarget === "icon") uploadIcon(file);
+  else uploadImage(file, imageTarget);
   e.target.value = "";
 });
 
@@ -548,6 +585,27 @@ view.addEventListener("click", e => {
     case "image":
       imageTarget = $(el.dataset.target);
       $("imageInput").click();
+      break;
+    case "video": {
+      const ta = $(el.dataset.target);
+      const link = (prompt("Paste a YouTube, Vimeo or Loom link:") || "").trim();
+      if (!link) break;
+      if (!videoEmbed(link)) {
+        setStatus("That doesn't look like a YouTube, Vimeo or Loom video link.", true);
+        break;
+      }
+      insertAtCursor(ta, `![](${link})`, 2); // caret lands inside [ ] for a caption
+      dirty = true;
+      setStatus("Video added — save to keep it");
+      break;
+    }
+    case "iconUpload":
+      imageTarget = "icon";
+      $("imageInput").click();
+      break;
+    case "iconRemove":
+      setIcon("");
+      setStatus("Unsaved changes");
       break;
     case "importSeed": importSeed(); break;
     case "startEmpty":
