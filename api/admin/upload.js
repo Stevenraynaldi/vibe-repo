@@ -18,11 +18,20 @@ const TYPES = {
   "image/avif": "avif"
 };
 
-// Connecting a Blob store with a custom env-var prefix renames the variable
-// (e.g. IMAGES_READ_WRITE_TOKEN), so fall back to any value shaped like one.
-function blobToken() {
-  return process.env.BLOB_READ_WRITE_TOKEN ||
-    Object.values(process.env).find(v => typeof v === "string" && v.startsWith("vercel_blob_rw_"));
+// Vercel now connects Blob stores with OIDC: no long-lived secret, just
+// BLOB_STORE_ID plus a short-lived identity token Vercel attaches to each
+// request. Older connections (and local dev) use a read-write token instead,
+// possibly renamed by a custom env-var prefix (e.g. IMAGES_READ_WRITE_TOKEN).
+function blobAuth(request) {
+  const env = process.env;
+  const oidcToken = request.headers.get("x-vercel-oidc-token") || env.VERCEL_OIDC_TOKEN;
+  const storeId = env.BLOB_STORE_ID ||
+    (Object.entries(env).find(([k, v]) => k.endsWith("_STORE_ID") && v) || [])[1];
+  if (oidcToken && storeId) return { oidcToken, storeId };
+
+  const token = env.BLOB_READ_WRITE_TOKEN ||
+    Object.values(env).find(v => typeof v === "string" && v.startsWith("vercel_blob_rw_"));
+  return token ? { token } : null;
 }
 
 // POST raw image bytes, Content-Type: image/…, ?name=original-filename
@@ -30,8 +39,8 @@ function blobToken() {
 export async function POST(request) {
   if (!(await isOwner(request))) return unauthorized();
 
-  const token = blobToken();
-  if (!token) {
+  const auth = blobAuth(request);
+  if (!auth) {
     return json({ error: "Image storage isn't reaching this deployment. In Vercel → Storage, check your Blob store is connected to Production, then redeploy." }, 500);
   }
 
@@ -54,7 +63,7 @@ export async function POST(request) {
       access: "public",
       contentType: type,
       addRandomSuffix: true,
-      token
+      ...auth
     });
     return json({ url: blob.url });
   } catch (e) {
