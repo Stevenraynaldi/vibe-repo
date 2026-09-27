@@ -51,7 +51,8 @@
 <script src="app.js"></script>
 <script>
 startPage("builds", () => {
-  document.title = SITE.name + " — Builds";
+  const baseTitle = SITE.name + " — Builds";
+  document.title = baseTitle;
   document.getElementById("introText").textContent = SITE.buildsIntro;
 
   const grid = document.getElementById("grid");
@@ -94,10 +95,19 @@ startPage("builds", () => {
       </button>`).join("");
   }
 
-  function openSheet(i) {
+  // Each build has its own address (builds.html?id=…), so it can be shared,
+  // and the address bar follows whichever pop-up is open.
+  const pageUrl = id => {
+    const u = new URL(location.href);
+    if (id) u.searchParams.set("id", id); else u.searchParams.delete("id");
+    return u.pathname + u.search + u.hash;
+  };
+  const isOpen = () => overlay.getAttribute("data-open") === "true";
+
+  function openSheet(i, { push = true } = {}) {
     const b = visible[i];
     if (!b) return;
-    lastFocus = document.activeElement;
+    if (!isOpen()) lastFocus = document.activeElement;
 
     const links = [
       b.repo ? `<a class="btn btn--primary" href="${esc(b.repo)}" target="_blank" rel="noopener">View repository</a>` : "",
@@ -127,7 +137,11 @@ startPage("builds", () => {
         <pre class="output" id="cfg">${esc(b.config)}</pre>
         <button class="mini" id="copyCfg" style="margin-top:10px">Copy config</button>` : ""}
 
-      ${links ? `<div class="actions">${links}</div>` : ""}`;
+      <div class="actions">${links}${shareButtons()}</div>`;
+
+    wireShare(sheetBody, canonicalUrl(b.id), b.name);
+    if (push) history.pushState({ build: b.id }, "", pageUrl(b.id));
+    document.title = `${b.name} — ${SITE.name}`;
 
     overlay.setAttribute("data-open", "true");
     document.body.style.overflow = "hidden";
@@ -143,11 +157,27 @@ startPage("builds", () => {
     }
   }
 
-  function closeSheet() {
+  function hideSheet() {
     overlay.setAttribute("data-open", "false");
     document.body.style.overflow = "";
+    document.title = baseTitle;
     if (lastFocus) lastFocus.focus();
   }
+
+  // If opening the pop-up added a history entry, closing steps back through
+  // it — so ✕, Escape and the browser's Back button all behave the same.
+  function closeSheet() {
+    if (history.state && history.state.build) return history.back(); // popstate hides it
+    history.replaceState(null, "", pageUrl(null));
+    hideSheet();
+  }
+
+  window.addEventListener("popstate", () => {
+    const id = new URLSearchParams(location.search).get("id");
+    const i = visible.findIndex(b => b.id === id);
+    if (i >= 0) openSheet(i, { push: false });
+    else if (isOpen()) hideSheet();
+  });
 
   grid.addEventListener("click", e => {
     const card = e.target.closest(".card");
@@ -157,8 +187,17 @@ startPage("builds", () => {
   document.getElementById("close").addEventListener("click", closeSheet);
   overlay.addEventListener("click", e => { if (e.target === overlay) closeSheet(); });
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && overlay.getAttribute("data-open") === "true") closeSheet();
+    if (e.key === "Escape" && isOpen()) closeSheet();
   });
+
+  // A shared link opens straight onto its build. A link to one that no
+  // longer exists (or is a draft you can't see) just shows the grid.
+  const linkedId = new URLSearchParams(location.search).get("id");
+  if (linkedId) {
+    const i = visible.findIndex(b => b.id === linkedId);
+    if (i >= 0) openSheet(i, { push: false });
+    else history.replaceState(null, "", pageUrl(null));
+  }
 });
 </script>
 </body>

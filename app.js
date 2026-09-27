@@ -253,6 +253,37 @@ function markdown(src) {
   return out.join("\n");
 }
 
+/* ---------- sharing ---------- */
+
+// The address to hand out: this page plus ?id=, without ?preview or anything
+// else that only means something in your own browser.
+function canonicalUrl(id) {
+  return `${location.origin}${location.pathname}?id=${encodeURIComponent(id)}`;
+}
+
+// "Share" only appears where the device has a share sheet (phones, and some
+// desktop browsers); "Copy link" works everywhere.
+function shareButtons() {
+  return `<button class="btn" type="button" data-share="copy">Copy link</button>` +
+    (navigator.share ? `<button class="btn" type="button" data-share="native">Share</button>` : "");
+}
+
+function wireShare(root, url, title) {
+  const copy = () => navigator.clipboard.writeText(url)
+    .then(() => toast("Link copied"))
+    .catch(() => toast("Couldn't copy — select the address bar instead"));
+  root.querySelectorAll("[data-share]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (btn.dataset.share !== "native") return copy();
+      try {
+        await navigator.share({ title, url });
+      } catch (e) {
+        if (e.name !== "AbortError") copy(); // AbortError = closed the share sheet
+      }
+    });
+  });
+}
+
 /* ---------- helpers ---------- */
 
 // Only web addresses or site-relative paths, never javascript: and friends.
