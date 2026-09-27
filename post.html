@@ -92,14 +92,10 @@ startPage("writing", () => {
       <div class="prose">${html}</div>
       <div class="actions" style="margin-top:56px;padding-top:26px;border-top:1px solid var(--rule)">
         <a class="btn" href="index.html">← All writing</a>
-        <button class="btn" id="share">Copy link</button>
+        ${shareButtons()}
       </div>`;
 
-    document.getElementById("share").addEventListener("click", () => {
-      navigator.clipboard.writeText(location.href)
-        .then(() => toast("Link copied"))
-        .catch(() => toast("Couldn't copy — select the address bar instead"));
-    });
+    wireShare(root, canonicalUrl(post.id), post.title);
   }
 });
 </script>
